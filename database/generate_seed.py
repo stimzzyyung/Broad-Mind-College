@@ -37,7 +37,7 @@ PW = {
 }
 
 emit("-- ==========================================================")
-emit("-- Seed data for the Crestview College portal")
+emit("-- Seed data for the Broad Mind Private School portal")
 emit("-- Generated to match backend/data/seed.js exactly (same demo")
 emit("-- people, classes, timetable pattern and sample scores).")
 emit("-- ==========================================================")
@@ -48,7 +48,7 @@ emit()
 # ---------- settings ----------
 emit("-- Settings (single row)")
 emit("INSERT INTO settings (id, school_name, motto, session, term, address, phone, email) VALUES")
-emit(f"  (1, {esc('Crestview College')}, {esc('Knowledge with character')}, {esc('2026/2027')}, {esc('First Term')}, {esc('12 Unity Road')}, {esc('0801 234 5678')}, {esc('info@crestview.edu')});")
+emit(f"  (1, {esc('Broad Mind Private School')}, {esc('Knowledge with character')}, {esc('2026/2027')}, {esc('First Term')}, {esc('12 Unity Road')}, {esc('0801 234 5678')}, {esc('info@crestview.edu')});")
 emit()
 
 # ---------- classes (form_teacher_id filled in later, after users exist) ----------
