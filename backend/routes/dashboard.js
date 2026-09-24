@@ -32,6 +32,58 @@ router.get('/', (req, res) => {
       return { id: p.id, amount: p.amount, date: p.date, studentName: student ? student.name : '', feeTitle: fee ? fee.title : '' };
     });
 
+    const exams = data.cbt_examinations || [];
+    const questions = data.question_bank || [];
+    const attempts = data.cbt_attempts || [];
+    const nowMs = Date.now();
+
+    const activeExams = exams.filter((e) => {
+      const start = new Date(`${e.openingDate}T${e.openingTime || '00:00'}:00`).getTime();
+      const end = new Date(`${e.closingDate}T${e.closingTime || '23:59'}:00`).getTime();
+      return e.status === 'active' || (e.status !== 'blocked' && e.status !== 'cancelled' && e.status !== 'closed' && nowMs >= start && nowMs <= end);
+    });
+
+    const scheduledExams = exams.filter((e) => {
+      const start = new Date(`${e.openingDate}T${e.openingTime || '00:00'}:00`).getTime();
+      return e.status === 'scheduled' && nowMs < start;
+    });
+
+    const completedAttempts = attempts.filter((a) => a.status === 'Submitted' || a.status === 'Auto Submitted');
+    const studentsWhoTookExams = new Set(completedAttempts.map((a) => a.studentId)).size;
+
+    const cbtAdmin = {
+      totalExams: exams.length,
+      activeExams: activeExams.length,
+      scheduledExams: scheduledExams.length,
+      totalQuestions: questions.length,
+      totalStudentsWhoTookExams: studentsWhoTookExams,
+      totalCompletedAttempts: completedAttempts.length,
+      recentActivity: (data.cbt_access_logs || []).slice(-5).reverse().map((l) => {
+        const stu = data.users.find((u) => u.id === l.studentId);
+        const ex = exams.find((e) => e.id === l.examId);
+        return {
+          id: l.id,
+          action: l.action,
+          studentName: stu ? stu.name : 'Student',
+          examTitle: ex ? ex.title : 'Exam',
+          timestamp: l.timestamp,
+        };
+      }),
+      recentResults: completedAttempts.slice(-5).reverse().map((a) => {
+        const stu = data.users.find((u) => u.id === a.studentId);
+        const ex = exams.find((e) => e.id === a.examId);
+        return {
+          id: a.id,
+          studentName: stu ? stu.name : 'Student',
+          examTitle: ex ? ex.title : 'Exam',
+          score: a.score,
+          percentage: a.percentage,
+          grade: a.grade,
+          date: a.submissionTime,
+        };
+      }),
+    };
+
     return res.json({
       role: 'admin',
       counts: {
@@ -39,6 +91,8 @@ router.get('/', (req, res) => {
         teachers: data.users.filter((u) => u.role === 'teacher').length,
         classes: data.classes.length,
         quizzes: data.quizzes.length,
+        cbtExams: exams.length,
+        cbtQuestions: questions.length,
       },
       fees: { expected, collected, outstanding: expected - collected },
       studentsPerClass: data.classes.map((c) => ({
@@ -49,6 +103,7 @@ router.get('/', (req, res) => {
         id: s.id, name: s.name, schoolId: s.schoolId,
         className: (data.classes.find((c) => c.id === s.classId) || {}).name || '',
       })),
+      cbt: cbtAdmin,
       announcements,
     });
   }
@@ -78,10 +133,72 @@ router.get('/', (req, res) => {
       return { id: s.id, studentName: student ? student.name : '', quizTitle: quiz.title, score: s.score, total: s.total, date: s.submittedAt };
     });
 
+    const exams = data.cbt_examinations || [];
+    const questions = data.question_bank || [];
+    const attempts = data.cbt_attempts || [];
+    const nowMs = Date.now();
+
+    // Teacher CBT metrics
+    const teacherExams = exams.filter((e) => e.createdById === req.user.id || classIds.includes(e.classId));
+    const teacherQuestions = questions.filter((q) => q.createdById === req.user.id || q.subject);
+    const teacherActiveExams = teacherExams.filter((e) => {
+      const start = new Date(`${e.openingDate}T${e.openingTime || '00:00'}:00`).getTime();
+      const end = new Date(`${e.closingDate}T${e.closingTime || '23:59'}:00`).getTime();
+      return e.status === 'active' || (e.status !== 'blocked' && e.status !== 'cancelled' && e.status !== 'closed' && nowMs >= start && nowMs <= end);
+    });
+    const teacherScheduledExams = teacherExams.filter((e) => {
+      const start = new Date(`${e.openingDate}T${e.openingTime || '00:00'}:00`).getTime();
+      return e.status === 'scheduled' && nowMs < start;
+    });
+    const teacherCompletedExams = teacherExams.filter((e) => {
+      const end = new Date(`${e.closingDate}T${e.closingTime || '23:59'}:00`).getTime();
+      return e.status === 'closed' || nowMs > end;
+    });
+
+    const teacherExamIds = teacherExams.map((e) => e.id);
+    const teacherAttempts = attempts.filter((a) => teacherExamIds.includes(a.examId) && (a.status === 'Submitted' || a.status === 'Auto Submitted'));
+
+    const cbtTeacher = {
+      totalQuestions: teacherQuestions.length,
+      activeExams: teacherActiveExams.length,
+      scheduledExams: teacherScheduledExams.length,
+      completedExams: teacherCompletedExams.length,
+      totalCompletedAttempts: teacherAttempts.length,
+      studentResults: teacherAttempts.slice(-5).reverse().map((a) => {
+        const stu = data.users.find((u) => u.id === a.studentId);
+        const ex = exams.find((e) => e.id === a.examId);
+        return {
+          id: a.id,
+          studentName: stu ? stu.name : 'Student',
+          examTitle: ex ? ex.title : 'Exam',
+          score: a.score,
+          percentage: a.percentage,
+          grade: a.grade,
+          date: a.submissionTime,
+        };
+      }),
+      recentActivity: (data.cbt_access_logs || [])
+        .filter((l) => teacherExamIds.includes(l.examId))
+        .slice(-5)
+        .reverse()
+        .map((l) => {
+          const stu = data.users.find((u) => u.id === l.studentId);
+          const ex = exams.find((e) => e.id === l.examId);
+          return {
+            id: l.id,
+            action: l.action,
+            studentName: stu ? stu.name : 'Student',
+            examTitle: ex ? ex.title : 'Exam',
+            timestamp: l.timestamp,
+          };
+        }),
+    };
+
     return res.json({
       role: 'teacher',
       counts: { classes: myClasses.length, students: studentCount, quizzes: myQuizzes.length,
-        submissions: data.submissions.filter((s) => myQuizzes.some((q) => q.id === s.quizId)).length },
+        submissions: data.submissions.filter((s) => myQuizzes.some((q) => q.id === s.quizId)).length,
+        cbtExams: teacherExams.length, cbtQuestions: teacherQuestions.length },
       classes: myClasses.map((c) => ({
         id: c.id, name: c.name,
         studentCount: data.users.filter((u) => u.role === 'student' && u.classId === c.id).length,
@@ -90,6 +207,7 @@ router.get('/', (req, res) => {
       })),
       today: { day, isToday, lessons },
       recentSubmissions,
+      cbt: cbtTeacher,
       announcements,
     });
   }
@@ -145,6 +263,68 @@ router.get('/', (req, res) => {
     .filter((q) => !q.dueDate || q.dueDate >= todayDate)
     .map((q) => ({ id: q.id, title: q.title, subject: q.subject, type: q.type, dueDate: q.dueDate, durationMins: q.durationMins, questionCount: q.questions.length }));
 
+  // Student CBT Examination Metrics
+  const exams = data.cbt_examinations || [];
+  const attempts = (data.cbt_attempts || []).filter((a) => a.studentId === me.id);
+  const nowMs = Date.now();
+
+  const myClassExams = exams.filter((e) => {
+    return Number(e.classId) === Number(me.classId) || (cls && e.classLevel && e.classLevel.toLowerCase() === cls.name.split(' ')[0].toLowerCase());
+  });
+
+  const availableExams = [];
+  const upcomingExams = [];
+  const inProgressExams = [];
+  const completedExams = [];
+
+  myClassExams.forEach((exam) => {
+    const start = new Date(`${exam.openingDate}T${exam.openingTime || '00:00'}:00`).getTime();
+    const end = new Date(`${exam.closingDate}T${exam.closingTime || '23:59'}:00`).getTime();
+    const examAttempts = attempts.filter((a) => a.examId === exam.id);
+    const activeAtt = examAttempts.find((a) => a.status === 'In Progress');
+    const submittedAtt = examAttempts.find((a) => a.status === 'Submitted' || a.status === 'Auto Submitted');
+
+    const item = {
+      id: exam.id,
+      title: exam.title,
+      subject: exam.subject,
+      durationMins: exam.durationMins,
+      totalMarks: exam.totalMarks,
+      numberQuestions: exam.questions ? exam.questions.length : exam.numberQuestions,
+      openingDate: exam.openingDate,
+      openingTime: exam.openingTime,
+      closingDate: exam.closingDate,
+      closingTime: exam.closingTime,
+    };
+
+    if (activeAtt) {
+      inProgressExams.push({ ...item, attemptId: activeAtt.id });
+    } else if (submittedAtt) {
+      completedExams.push({
+        ...item,
+        score: submittedAtt.score,
+        percentage: submittedAtt.percentage,
+        grade: submittedAtt.grade,
+        submissionTime: submittedAtt.submissionTime,
+      });
+    } else if (exam.status === 'active' || (exam.status !== 'blocked' && exam.status !== 'cancelled' && exam.status !== 'closed' && nowMs >= start && nowMs <= end)) {
+      availableExams.push(item);
+    } else if (nowMs < start && exam.status !== 'cancelled') {
+      upcomingExams.push({
+        ...item,
+        opensInSeconds: Math.max(0, Math.floor((start - nowMs) / 1000)),
+      });
+    }
+  });
+
+  const cbtStudent = {
+    availableExams,
+    upcomingExams,
+    inProgressExams,
+    completedExams,
+    results: completedExams,
+  };
+
   res.json({
     role: 'student',
     className: cls ? cls.name : 'Unassigned',
@@ -153,6 +333,7 @@ router.get('/', (req, res) => {
     lastResult,
     today: { day, isToday, lessons: todayLessons },
     pendingQuizzes,
+    cbt: cbtStudent,
     announcements,
   });
 });

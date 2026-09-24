@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GraduationCap, Users, School, MonitorPlay, UserPlus, Megaphone, ArrowRight } from 'lucide-react';
+import {
+  GraduationCap, Users, School, MonitorPlay, UserPlus, Megaphone, ArrowRight,
+  Clock, Calendar, HelpCircle, CheckCircle2
+} from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import useFetch from '../../hooks/useFetch.js';
@@ -51,8 +54,10 @@ export default function AdminHome() {
           <div>
             <h1>{greeting()}, {shortName(user.name)}</h1>
             <p>Here is how the school is doing this term. Fees, classes and results are all one click away.</p>
-            <div className="row">
+            <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
               <Link to="/admin/register-student" className="btn btn-brass"><UserPlus size={17} />Register a student</Link>
+              <Link to="/exams" className="btn btn-on-dark"><Clock size={17} />CBT Examinations</Link>
+              <Link to="/question-bank" className="btn btn-on-dark"><HelpCircle size={17} />Question Bank</Link>
               <button className="btn btn-on-dark" onClick={() => setNoticeOpen(true)}><Megaphone size={17} />Post a notice</button>
             </div>
           </div>
@@ -65,11 +70,31 @@ export default function AdminHome() {
         </div>
       </section>
 
+      {/* CBT Examination Executive Dashboard Bar */}
+      {data.cbt && (
+        <div style={{ marginBottom: 20 }}>
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+            <h3 style={{ fontSize: 18, color: 'var(--ink)' }}>CBT & Examination Overview</h3>
+            <div className="row" style={{ gap: 8 }}>
+              <Link to="/exams" className="btn btn-sm btn-outline">All Exams ({data.cbt.totalExams})</Link>
+              <Link to="/exam-reports" className="btn btn-sm btn-primary">Performance Reports</Link>
+            </div>
+          </div>
+          <div className="grid grid-stats">
+            <StatCard icon={Clock} label="Total Exams" value={data.cbt.totalExams} subtext={`${data.cbt.activeExams} active now`} tone="primary" />
+            <StatCard icon={CheckCircle2} label="Active Exams" value={data.cbt.activeExams} subtext="Open to students" tone="ok" />
+            <StatCard icon={Calendar} label="Scheduled Exams" value={data.cbt.scheduledExams} subtext="Upcoming windows" tone="warn" />
+            <StatCard icon={HelpCircle} label="Total Questions" value={data.cbt.totalQuestions} subtext="In Question Bank" tone="info" />
+            <StatCard icon={Users} label="Students Tested" value={data.cbt.totalStudentsWhoTookExams} subtext={`${data.cbt.totalCompletedAttempts} total submissions`} tone="brass" />
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <StatCard icon={GraduationCap} label="Students" value={data.counts.students} />
         <StatCard icon={Users} label="Teachers" value={data.counts.teachers} tone="info" />
         <StatCard icon={School} label="Classes" value={data.counts.classes} tone="brass" />
-        <StatCard icon={MonitorPlay} label="Quizzes and tests" value={data.counts.quizzes} hint="Created by teachers" />
+        <StatCard icon={MonitorPlay} label="Quizzes & Tests" value={data.counts.quizzes} hint="Created by teachers" />
       </div>
 
       <div className="grid split">

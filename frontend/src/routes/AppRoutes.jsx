@@ -38,6 +38,22 @@ import ParentHome from '../pages/parent/ParentHome.jsx';
 import ParentChildren from '../pages/parent/ParentChildren.jsx';
 import ParentFees from '../pages/parent/ParentFees.jsx';
 
+// ----- Advanced CBT & Examination Management System Pages -----
+import QuestionBank from '../pages/cbt/QuestionBank.jsx';
+import QuestionCreate from '../pages/cbt/QuestionCreate.jsx';
+import QuestionArchive from '../pages/cbt/QuestionArchive.jsx';
+import ExamsList from '../pages/cbt/ExamsList.jsx';
+import ExamCreate from '../pages/cbt/ExamCreate.jsx';
+import ExamDetails from '../pages/cbt/ExamDetails.jsx';
+import ExamTake from '../pages/cbt/ExamTake.jsx';
+import ExamResults from '../pages/cbt/ExamResults.jsx';
+import GeneratePosition from '../pages/cbt/GeneratePosition.jsx';
+import ClassCategories from '../pages/cbt/ClassCategories.jsx';
+import ExamLevels from '../pages/cbt/ExamLevels.jsx';
+import ExamSchedule from '../pages/cbt/ExamSchedule.jsx';
+import ExamAttempts from '../pages/cbt/ExamAttempts.jsx';
+import ExamReports from '../pages/cbt/ExamReports.jsx';
+
 // "/" sends people to their own portal, or to the login page
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -51,6 +67,146 @@ export default function AppRoutes() {
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Signup />} />
+
+      {/* Standalone CBT Exam Runner (No distracting sidebar layout) */}
+      <Route
+        path="/exams/:id/take"
+        element={
+          <ProtectedRoute roles={['student']}>
+            <ExamTake />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ============================================================== */}
+      {/* Root-Level CBT Routes with DashboardLayout */}
+      {/* ============================================================== */}
+
+      {/* Question Bank Routes (Staff: Admin & Teacher) */}
+      <Route
+        path="/question-bank"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<QuestionBank />} />
+        <Route path="create" element={<QuestionCreate />} />
+        <Route path="archive" element={<QuestionArchive />} />
+      </Route>
+
+      {/* CBT Examinations Routes (All Authenticated Roles) */}
+      <Route
+        path="/exams"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher', 'student']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ExamsList />} />
+        <Route
+          path="create"
+          element={
+            <ProtectedRoute roles={['admin', 'teacher']}>
+              <ExamCreate />
+            </ProtectedRoute>
+          }
+        />
+        <Route path=":id" element={<ExamDetails />} />
+        <Route path=":id/results" element={<ExamResults />} />
+        <Route
+          path=":id/attempts"
+          element={
+            <ProtectedRoute roles={['admin', 'teacher']}>
+              <ExamAttempts />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
+
+      {/* Dedicated CBT Features */}
+      <Route
+        path="/exam-results"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher', 'student']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ExamResults />} />
+      </Route>
+
+      <Route
+        path="/exam-schedule"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher', 'student']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ExamSchedule />} />
+      </Route>
+
+      <Route
+        path="/generate-position"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<GeneratePosition />} />
+      </Route>
+
+      <Route
+        path="/class-categories"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ClassCategories />} />
+      </Route>
+
+      <Route
+        path="/exam-levels"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ExamLevels />} />
+      </Route>
+
+      <Route
+        path="/exam-attempts"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ExamAttempts />} />
+      </Route>
+
+      <Route
+        path="/exam-reports"
+        element={
+          <ProtectedRoute roles={['admin', 'teacher']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ExamReports />} />
+      </Route>
+
+      {/* ============================================================== */}
+      {/* Existing Role-based Portal Portions */}
+      {/* ============================================================== */}
 
       {/* Principal / admin */}
       <Route

@@ -195,6 +195,11 @@ function seed() {
 
   const data = { settings, users, classes, fees, payments, results, quizzes, submissions, announcements, notifications: [] };
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  try {
+    require('./seed_cbt');
+  } catch (e) {
+    console.error('CBT seed error:', e);
+  }
 }
 
 module.exports = seed;

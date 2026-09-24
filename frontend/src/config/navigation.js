@@ -1,6 +1,8 @@
 import {
   LayoutDashboard, UserPlus, GraduationCap, Users, School, Award,
   MonitorPlay, Wallet, User, ClipboardList, Baby,
+  Clock, Calendar, HelpCircle, Archive, Sliders, BarChart3,
+  Trophy, ShieldAlert, Layers
 } from 'lucide-react';
 
 // The side navigation for each portal. To add a page:
@@ -9,6 +11,21 @@ import {
 export const navigation = {
   admin: [
     { title: null, items: [{ label: 'Home', to: '/admin', icon: LayoutDashboard, end: true }] },
+    {
+      title: 'CBT & Examination',
+      items: [
+        { label: 'CBT Examinations', to: '/exams', icon: Clock },
+        { label: 'Question Bank', to: '/question-bank', icon: HelpCircle },
+        { label: 'Question Archive', to: '/question-bank/archive', icon: Archive },
+        { label: 'Exam Schedule', to: '/exam-schedule', icon: Calendar },
+        { label: 'Exam Results', to: '/exam-results', icon: Award },
+        { label: 'Generate Position', to: '/generate-position', icon: Trophy },
+        { label: 'Attempts & Overrides', to: '/exam-attempts', icon: Sliders },
+        { label: 'Exam Reports', to: '/exam-reports', icon: BarChart3 },
+        { label: 'Class Categories', to: '/class-categories', icon: Layers },
+        { label: 'Exam Levels', to: '/exam-levels', icon: School },
+      ],
+    },
     {
       title: 'People',
       items: [
@@ -21,8 +38,8 @@ export const navigation = {
       title: 'School',
       items: [
         { label: 'Classes', to: '/admin/classes', icon: School },
-        { label: 'Results', to: '/admin/results', icon: Award },
-        { label: 'LMS', to: '/admin/lms', icon: MonitorPlay },
+        { label: 'Term Results', to: '/admin/results', icon: Award },
+        { label: 'LMS Quizzes', to: '/admin/lms', icon: MonitorPlay },
       ],
     },
     { title: 'Finance', items: [{ label: 'Fees & receipts', to: '/admin/fees', icon: Wallet }] },
@@ -32,11 +49,23 @@ export const navigation = {
   teacher: [
     { title: null, items: [{ label: 'Home', to: '/teacher', icon: LayoutDashboard, end: true }] },
     {
+      title: 'CBT & Examination',
+      items: [
+        { label: 'CBT Examinations', to: '/exams', icon: Clock },
+        { label: 'Question Bank', to: '/question-bank', icon: HelpCircle },
+        { label: 'Question Archive', to: '/question-bank/archive', icon: Archive },
+        { label: 'Exam Schedule', to: '/exam-schedule', icon: Calendar },
+        { label: 'Exam Results', to: '/exam-results', icon: Award },
+        { label: 'Candidate Attempts', to: '/exam-attempts', icon: Sliders },
+        { label: 'Exam Reports', to: '/exam-reports', icon: BarChart3 },
+      ],
+    },
+    {
       title: 'Teaching',
       items: [
         { label: 'Classes', to: '/teacher/classes', icon: School },
         { label: 'Enter results', to: '/teacher/results', icon: ClipboardList },
-        { label: 'LMS', to: '/teacher/lms', icon: MonitorPlay },
+        { label: 'LMS Quizzes', to: '/teacher/lms', icon: MonitorPlay },
       ],
     },
     { title: 'Account', items: [{ label: 'Profile', to: '/teacher/profile', icon: User }] },
@@ -45,11 +74,19 @@ export const navigation = {
   student: [
     { title: null, items: [{ label: 'Home', to: '/student', icon: LayoutDashboard, end: true }] },
     {
+      title: 'CBT Examination',
+      items: [
+        { label: 'My Examinations', to: '/exams', icon: Clock },
+        { label: 'Exam Schedule', to: '/exam-schedule', icon: Calendar },
+        { label: 'CBT Results', to: '/exam-results', icon: Award },
+      ],
+    },
+    {
       title: 'School',
       items: [
         { label: 'Classes', to: '/student/classes', icon: School },
-        { label: 'Check results', to: '/student/results', icon: Award },
-        { label: 'LMS', to: '/student/lms', icon: MonitorPlay },
+        { label: 'Term Report', to: '/student/results', icon: Award },
+        { label: 'LMS Quizzes', to: '/student/lms', icon: MonitorPlay },
       ],
     },
     { title: 'Payments', items: [{ label: 'Fees & receipts', to: '/student/fees', icon: Wallet }] },
@@ -71,11 +108,11 @@ export const roleLabels = {
   parent: 'Parent portal',
 };
 
-// Finds the page title for the top bar, e.g. "/teacher/lms/new" -> "LMS"
+// Finds the page title for the top bar
 export function titleFor(role, pathname) {
   const items = (navigation[role] || []).flatMap((group) => group.items);
   const match = items
     .filter((item) => pathname === item.to || pathname.startsWith(item.to + '/'))
     .sort((a, b) => b.to.length - a.to.length)[0];
-  return match ? match.label : 'Portal';
+  return match ? match.label : 'CBT Portal';
 }

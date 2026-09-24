@@ -51,6 +51,7 @@ app.use('/api/payments', require('./routes/payments'));
 app.use('/api/results', require('./routes/results'));
 app.use('/api/lms', require('./routes/lms'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/cbt', require('./routes/cbt'));
 
 // Anything else
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));

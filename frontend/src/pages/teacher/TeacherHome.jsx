@@ -1,10 +1,14 @@
 import { Link } from 'react-router-dom';
-import { School, Users, MonitorPlay, ClipboardList, ArrowRight } from 'lucide-react';
+import {
+  School, Users, MonitorPlay, ClipboardList, ArrowRight,
+  Clock, HelpCircle, CheckCircle2, Calendar, Award
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import useFetch from '../../hooks/useFetch.js';
 import StatCard from '../../components/ui/StatCard.jsx';
 import TodayStrip from '../../components/ui/TodayStrip.jsx';
 import Announcements from '../../components/ui/Announcements.jsx';
+import Badge from '../../components/ui/Badge.jsx';
 import { Loading, ErrorNote, EmptyState } from '../../components/ui/Feedback.jsx';
 import { greeting, shortName, formatDateTime } from '../../utils/format.js';
 
@@ -22,14 +26,35 @@ export default function TeacherHome() {
       <section className="hero">
         <div className="hero-inner">
           <h1>{greeting()}, {shortName(user.name)}</h1>
-          <p>Here is what's on today, and how your classes are doing.</p>
-          <div className="row">
-            <Link to="/teacher/results" className="btn btn-brass"><ClipboardList size={17} />Enter results</Link>
-            <Link to="/teacher/lms/new" className="btn btn-on-dark"><MonitorPlay size={17} />New quiz or test</Link>
+          <p>Here is what's on today, and how your classes and CBT examinations are performing.</p>
+          <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <Link to="/exams/create" className="btn btn-brass"><Clock size={17} />Create CBT exam</Link>
+            <Link to="/question-bank" className="btn btn-on-dark"><HelpCircle size={17} />Question Bank</Link>
+            <Link to="/teacher/results" className="btn btn-on-dark"><ClipboardList size={17} />Enter results</Link>
           </div>
           <TodayStrip day={data.today.day} isToday={data.today.isToday} periods={lessons} />
         </div>
       </section>
+
+      {/* Teacher CBT Stats Grid */}
+      {data.cbt && (
+        <div style={{ marginBottom: 20 }}>
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+            <h3 style={{ fontSize: 18, color: 'var(--ink)' }}>CBT & Examinations</h3>
+            <div className="row" style={{ gap: 8 }}>
+              <Link to="/exams" className="btn btn-sm btn-outline">My Exams</Link>
+              <Link to="/exam-results" className="btn btn-sm btn-primary">All Results</Link>
+            </div>
+          </div>
+          <div className="grid grid-stats">
+            <StatCard icon={HelpCircle} label="Total Questions" value={data.cbt.totalQuestions} subtext="In Question Bank" tone="primary" />
+            <StatCard icon={CheckCircle2} label="Active Exams" value={data.cbt.activeExams} subtext="Open now" tone="ok" />
+            <StatCard icon={Calendar} label="Scheduled Exams" value={data.cbt.scheduledExams} subtext="Upcoming" tone="warn" />
+            <StatCard icon={Award} label="Completed Exams" value={data.cbt.completedExams} subtext="Past windows" tone="info" />
+            <StatCard icon={Users} label="Student Submissions" value={data.cbt.totalCompletedAttempts} subtext="Processed scores" tone="brass" />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <StatCard icon={School} label="My classes" value={data.counts.classes} />
@@ -39,24 +64,25 @@ export default function TeacherHome() {
       </div>
 
       <div className="grid split">
+        {/* Recent CBT Student Results */}
         <div className="card card-flush">
           <div className="card-head">
-            <h3>Recent quiz submissions</h3>
-            <Link to="/teacher/lms" className="btn btn-ghost btn-sm">All quizzes <ArrowRight size={15} /></Link>
+            <h3>Recent CBT Student Results</h3>
+            <Link to="/exam-results" className="btn btn-ghost btn-sm">All CBT results <ArrowRight size={15} /></Link>
           </div>
-          {data.recentSubmissions.length === 0 ? (
-            <EmptyState title="No submissions yet" text="Once students take a quiz or test, their scores will show here." />
+          {!data.cbt?.studentResults || data.cbt.studentResults.length === 0 ? (
+            <EmptyState title="No CBT results yet" text="Student CBT results will show here as examinations are submitted." />
           ) : (
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Student</th><th>Quiz</th><th className="num">Score</th><th>Date</th></tr></thead>
+                <thead><tr><th>Student</th><th>Examination</th><th className="num">Score</th><th>Grade</th></tr></thead>
                 <tbody>
-                  {data.recentSubmissions.map((s) => (
+                  {data.cbt.studentResults.map((s) => (
                     <tr key={s.id}>
                       <td className="strong">{s.studentName}</td>
-                      <td>{s.quizTitle}</td>
-                      <td className="num">{s.score}/{s.total}</td>
-                      <td>{formatDateTime(s.date)}</td>
+                      <td>{s.examTitle}</td>
+                      <td className="num">{s.score} ({s.percentage}%)</td>
+                      <td><Badge tone="ok">{s.grade}</Badge></td>
                     </tr>
                   ))}
                 </tbody>
