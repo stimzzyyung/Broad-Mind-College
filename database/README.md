@@ -1,4 +1,4 @@
-# Crestview College portal — MySQL database
+# Broad Mind Private School portal — MySQL database
 
 Two files here, meant to be imported in order:
 
