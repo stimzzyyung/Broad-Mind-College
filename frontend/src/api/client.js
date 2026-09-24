@@ -9,6 +9,10 @@ export const tokenStore = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
+const RAW_BACKEND_URL = import.meta.env.VITE_API_URL ?? 'https://broad-mind-college.onrender.com';
+const BACKEND_URL = RAW_BACKEND_URL.replace(/\/+$/, '');
+const API_BASE = BACKEND_URL.endsWith('/api') ? BACKEND_URL : `${BACKEND_URL}/api`;
+
 async function request(path, { method = 'GET', body, asBlob = false } = {}) {
   const headers = {};
   if (body) headers['Content-Type'] = 'application/json';
@@ -19,7 +23,9 @@ async function request(path, { method = 'GET', body, asBlob = false } = {}) {
   try {
     let res;
     try {
-      res = await fetch(`/api${path}`, {
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      const url = `${API_BASE}${cleanPath}`;
+      res = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
