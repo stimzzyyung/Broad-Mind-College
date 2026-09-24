@@ -10,7 +10,7 @@ function seed() {
   const dateFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
   const settings = {
-    schoolName: 'Crestview College',
+    schoolName: 'Broad Mind Private School',
     motto: 'Knowledge with character',
     session: '2026/2027',
     term: 'First Term',

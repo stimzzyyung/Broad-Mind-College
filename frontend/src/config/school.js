@@ -1,7 +1,7 @@
 // Shown on the login page (before anyone has logged in).
 // Inside the portal, the name comes from the backend settings.
 export const SCHOOL = {
-  name: 'Crestview College',
+  name: 'Broad Mind Private School',
   motto: 'Knowledge with character',
 };
 

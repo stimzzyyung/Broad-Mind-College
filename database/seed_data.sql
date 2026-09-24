@@ -1,5 +1,5 @@
 -- ==========================================================
--- Seed data for the Crestview College portal
+-- Seed data for the Broad Mind Private School portal
 -- Generated to match backend/data/seed.js exactly (same demo
 -- people, classes, timetable pattern and sample scores).
 -- ==========================================================
@@ -8,7 +8,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 -- Settings (single row)
 INSERT INTO settings (id, school_name, motto, session, term, address, phone, email) VALUES
-  (1, 'Crestview College', 'Knowledge with character', '2026/2027', 'First Term', '12 Unity Road', '0801 234 5678', 'info@crestview.edu');
+  (1, 'Broad Mind Private School', 'Knowledge with character', '2026/2027', 'First Term', '12 Unity Road', '0801 234 5678', 'info@crestview.edu');
 
 -- Classes (form_teacher_id is set further down, once the teachers exist)
 INSERT INTO classes (id, name, level) VALUES

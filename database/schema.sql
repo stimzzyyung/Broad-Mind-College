@@ -1,5 +1,5 @@
 -- ==========================================================
--- Crestview College portal — MySQL schema
+-- Broad Mind Private School portal — MySQL schema
 -- Mirrors the data currently kept in backend/data/db.json
 -- (users, classes, fees, payments, results, the LMS and
 -- notifications), normalised into proper tables.
