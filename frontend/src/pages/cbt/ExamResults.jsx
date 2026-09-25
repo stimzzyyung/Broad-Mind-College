@@ -99,7 +99,7 @@ export default function ExamResults() {
 
       {/* Filter Bar */}
       <div className="cbt-filter-bar no-print">
-        <div style={{ position: 'relative', flex: '2', minWidth: '220px' }}>
+        <div style={{ position: 'relative', flex: '2', minWidth: '0' }}>
           <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--ink-3)' }} />
           <input
             type="text"
@@ -349,14 +349,7 @@ export default function ExamResults() {
             </div>
 
             {/* Performance Analytics Grid */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: '14px',
-                textAlign: 'center',
-              }}
-            >
+            <div className="cbt-stats-grid">
               <div style={{ padding: '16px', background: '#fff0f6', borderRadius: '12px', border: '1px solid var(--line)' }}>
                 <div style={{ fontSize: '12px', color: 'var(--ink-3)' }}>Raw Score</div>
                 <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--board)' }}>

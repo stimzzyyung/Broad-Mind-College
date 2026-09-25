@@ -138,7 +138,7 @@ export default function QuestionCreate() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '24px' }}>
+      <div className="cbt-builder-layout">
         {/* Form Column */}
         <div className="card">
           <div className="card-head">

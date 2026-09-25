@@ -74,7 +74,7 @@ export default function ExamReports() {
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(0, 1fr)', gap: '24px', marginBottom: '24px' }}>
+      <div className="cbt-builder-layout" style={{ marginBottom: '24px' }}>
         {/* Subject Performance Breakdown */}
         <div className="card">
           <div className="card-head">

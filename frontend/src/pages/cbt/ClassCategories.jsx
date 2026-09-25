@@ -145,7 +145,7 @@ export default function ClassCategories() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div className="cbt-card-grid" style={{ marginBottom: '24px' }}>
         {/* Class Categories List */}
         <div className="card">
           <div className="card-head">

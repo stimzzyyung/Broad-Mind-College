@@ -200,14 +200,14 @@ export default function ExamDetails() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(0, 1fr)', gap: '24px' }}>
+      <div className="cbt-builder-layout">
         {/* Left Column: Examination Details & Questions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div className="card">
             <div className="card-head">
               <h3>Examination Specifications</h3>
             </div>
-            <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
               <div>
                 <div style={{ fontSize: '12.5px', color: 'var(--ink-3)' }}>Subject</div>
                 <div style={{ fontWeight: 600, fontSize: '15px' }}>{exam.subject}</div>

@@ -117,7 +117,7 @@ export default function ExamsList() {
 
       {/* Filter Bar */}
       <div className="cbt-filter-bar">
-        <div style={{ position: 'relative', flex: '2', minWidth: '220px' }}>
+        <div style={{ position: 'relative', flex: '2', minWidth: '0' }}>
           <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--ink-3)' }} />
           <input
             type="text"
@@ -206,7 +206,7 @@ export default function ExamsList() {
           }
         />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+        <div className="cbt-card-grid">
           {exams.map((exam) => {
             const timeInfo = exam.timeInfo || {};
             const isCompleted = exam.myAttempt?.status === 'Submitted' || exam.myAttempt?.status === 'Auto Submitted';

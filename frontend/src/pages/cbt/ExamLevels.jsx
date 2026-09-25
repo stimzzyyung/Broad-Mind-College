@@ -144,7 +144,7 @@ export default function ExamLevels() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
+      <div className="cbt-card-grid">
         {/* Examination Categories */}
         <div className="card">
           <div className="card-head">

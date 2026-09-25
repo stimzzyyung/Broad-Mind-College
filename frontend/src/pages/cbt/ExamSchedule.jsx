@@ -140,7 +140,7 @@ export default function ExamSchedule() {
                 No examinations currently in an active access window.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+              <div className="cbt-card-grid">
                 {activeExams.map((exam) => (
                   <div
                     key={exam.id}
@@ -209,7 +209,7 @@ export default function ExamSchedule() {
                 No scheduled examinations pending.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+              <div className="cbt-card-grid">
                 {upcomingExams.map((exam) => (
                   <div
                     key={exam.id}

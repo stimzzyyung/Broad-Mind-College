@@ -172,7 +172,7 @@ export default function ExamCreate() {
       />
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: '24px' }}>
+        <div className="cbt-builder-layout">
           {/* Left: Exam Parameters */}
           <div className="card">
             <div className="card-head">
@@ -514,6 +514,13 @@ export default function ExamCreate() {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="card-foot" style={{ justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
+          <Link to="/exams" className="btn btn-outline">Cancel</Link>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            <Save size={16} /> {saving ? 'Creating Examination...' : 'Create Examination'}
+          </button>
         </div>
       </form>
     </div>
