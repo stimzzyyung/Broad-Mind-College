@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -46,7 +48,12 @@ export default function TeacherClasses() {
         <Loading />
       ) : (
         <div className="card">
-          <div className="card-head"><h3>{cls.name}</h3></div>
+          <div className="card-head">
+            <h3>{cls.name}</h3>
+            <Link to="/teacher/register-student" className="btn btn-sm btn-primary">
+              <UserPlus size={15} /> Register student
+            </Link>
+          </div>
 
           <div className="tabs" role="tablist">
             {[['students', `Students (${cls.students.length})`], ['subjects', 'Subjects'], ['timetable', 'Timetable']].map(([key, label]) => (

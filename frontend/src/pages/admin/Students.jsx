@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Pencil, Trash2, UserPlus, GraduationCap } from 'lucide-react';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
 import Modal from '../../components/ui/Modal.jsx';
@@ -11,9 +12,10 @@ import { useToast } from '../../components/ui/Toast.jsx';
 import { formatDate } from '../../utils/format.js';
 
 export default function Students() {
+  const { user } = useAuth();
   const toast = useToast();
   const students = useFetch('/students');
-  const classes = useFetch('/classes');
+  const classes = useFetch(user.role === 'teacher' ? '/classes?all=true' : '/classes');
   const [search, setSearch] = useState('');
   const [classId, setClassId] = useState('');
   const [editing, setEditing] = useState(null);
@@ -58,8 +60,8 @@ export default function Students() {
     <>
       <PageHeader
         title="Students"
-        subtitle={`${students.data.length} students in the school.`}
-        actions={<Link to="/admin/register-student" className="btn btn-primary"><UserPlus size={17} />Register student</Link>}
+        subtitle={user.role === 'teacher' ? `${students.data.length} students in your classes.` : `${students.data.length} students in the school.`}
+        actions={<Link to={`/${user.role}/register-student`} className="btn btn-primary"><UserPlus size={17} />Register student</Link>}
       />
 
       <div className="filters">
@@ -129,8 +131,10 @@ export default function Students() {
               <div className="field"><label htmlFor="e-gp">Guardian phone</label><input id="e-gp" className="input" value={editing.guardianPhone} onChange={change('guardianPhone')} /></div>
               <div className="field full"><label htmlFor="e-a">Address</label><input id="e-a" className="input" value={editing.address || ''} onChange={change('address')} /></div>
             </div>
-            <div className="form-actions" style={{ justifyContent: 'space-between' }}>
-              <button type="button" className="btn btn-danger" onClick={remove}><Trash2 size={16} />Remove student</button>
+            <div className="form-actions" style={{ justifyContent: user.role === 'admin' ? 'space-between' : 'flex-end' }}>
+              {user.role === 'admin' && (
+                <button type="button" className="btn btn-danger" onClick={remove}><Trash2 size={16} />Remove student</button>
+              )}
               <div className="row">
                 <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
                 <button className="btn btn-primary">Save changes</button>

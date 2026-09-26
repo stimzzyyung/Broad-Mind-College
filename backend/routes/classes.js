@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
   const data = db.read();
   let list = data.classes;
 
-  if (req.user.role === 'teacher') {
+  if (req.user.role === 'teacher' && req.query.all !== 'true') {
     const mine = teacherClassIds(data, req.user.id);
     list = list.filter((c) => mine.includes(c.id));
   }

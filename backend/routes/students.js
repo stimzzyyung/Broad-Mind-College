@@ -38,15 +38,15 @@ router.get('/', requireRole('admin', 'teacher', 'parent'), (req, res) => {
 });
 
 // POST /api/students  – register a new student
-// Admins register any student. Parents can register their own children from the parent portal;
+// Admins and teachers register any student. Parents can register their own children from the parent portal;
 // the account is linked to them with parentId, and their own contact details fill the guardian fields.
-router.post('/', requireRole('admin', 'parent'), (req, res) => {
+router.post('/', requireRole('admin', 'teacher', 'parent'), (req, res) => {
   const { firstName, lastName, gender, dob, classId, guardianName, guardianPhone, address, email } = req.body;
 
   if (!firstName || !lastName || !gender || !dob || !classId) {
     return res.status(400).json({ message: 'Please fill in all the required fields' });
   }
-  if (req.user.role === 'admin' && (!guardianName || !guardianPhone)) {
+  if ((req.user.role === 'admin' || req.user.role === 'teacher') && (!guardianName || !guardianPhone)) {
     return res.status(400).json({ message: 'Please fill in all the required fields' });
   }
 
@@ -104,7 +104,18 @@ router.post('/', requireRole('admin', 'parent'), (req, res) => {
       title: 'New student registered',
       body: `${student.name} was registered by a parent into ${cls ? cls.name : 'a class'}.`,
       type: 'student',
-      link: '/students',
+      link: '/admin/students',
+    });
+  }
+
+  if (req.user.role === 'teacher') {
+    const cls = data.classes.find((c) => c.id === Number(classId));
+    const admins = data.users.filter((u) => u.role === 'admin').map((u) => u.id);
+    notifyUsers(data, admins, {
+      title: 'New student registered',
+      body: `${student.name} was registered by teacher ${req.user.name} into ${cls ? cls.name : 'a class'}.`,
+      type: 'student',
+      link: '/admin/students',
     });
   }
 
@@ -117,8 +128,8 @@ router.post('/', requireRole('admin', 'parent'), (req, res) => {
 });
 
 // POST /api/students/bulk  { rows: [{ firstName, lastName, gender, dob, classId, guardianName, guardianPhone, address, email }] }
-// Admin only – register many students at once, e.g. pasted from a spreadsheet.
-router.post('/bulk', requireRole('admin'), (req, res) => {
+// Admin & Teacher – register many students at once, e.g. pasted from a spreadsheet.
+router.post('/bulk', requireRole('admin', 'teacher'), (req, res) => {
   const { rows } = req.body;
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ message: 'Add at least one row' });
@@ -188,7 +199,18 @@ router.post('/bulk', requireRole('admin'), (req, res) => {
     results.push({ row: rowNum, ok: true, name: student.name, className: cls.name, loginId: schoolId, password: DEFAULT_PASSWORD });
   });
 
-  if (created > 0) db.write(data);
+  if (created > 0) {
+    if (req.user.role === 'teacher') {
+      const admins = data.users.filter((u) => u.role === 'admin').map((u) => u.id);
+      notifyUsers(data, admins, {
+        title: 'Bulk students registered',
+        body: `${created} student(s) were registered by teacher ${req.user.name}.`,
+        type: 'student',
+        link: '/admin/students',
+      });
+    }
+    db.write(data);
+  }
   res.status(created > 0 ? 201 : 400).json({
     message: `${created} of ${rows.length} student${rows.length === 1 ? '' : 's'} registered`,
     created,

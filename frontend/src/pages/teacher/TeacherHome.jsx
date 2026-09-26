@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   School, Users, MonitorPlay, ClipboardList, ArrowRight,
-  Clock, HelpCircle, CheckCircle2, Calendar, Award
+  Clock, HelpCircle, CheckCircle2, Calendar, Award, UserPlus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import useFetch from '../../hooks/useFetch.js';
@@ -28,7 +28,8 @@ export default function TeacherHome() {
           <h1>{greeting()}, {shortName(user.name)}</h1>
           <p>Here is what's on today, and how your classes and CBT examinations are performing.</p>
           <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <Link to="/exams/create" className="btn btn-brass"><Clock size={17} />Create CBT exam</Link>
+            <Link to="/teacher/register-student" className="btn btn-brass"><UserPlus size={17} />Register student</Link>
+            <Link to="/exams/create" className="btn btn-on-dark"><Clock size={17} />Create CBT exam</Link>
             <Link to="/question-bank" className="btn btn-on-dark"><HelpCircle size={17} />Question Bank</Link>
             <Link to="/teacher/results" className="btn btn-on-dark"><ClipboardList size={17} />Enter results</Link>
           </div>

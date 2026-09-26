@@ -239,6 +239,8 @@ export default function AppRoutes() {
         }
       >
         <Route index element={<TeacherHome />} />
+        <Route path="register-student" element={<RegisterStudent />} />
+        <Route path="students" element={<Students />} />
         <Route path="classes" element={<TeacherClasses />} />
         <Route path="results" element={<TeacherResults />} />
         <Route path="lms" element={<TeacherLMS />} />

@@ -49,6 +49,14 @@ export const navigation = {
   teacher: [
     { title: null, items: [{ label: 'Home', to: '/teacher', icon: LayoutDashboard, end: true }] },
     {
+      title: 'Students & Classes',
+      items: [
+        { label: 'Register student', to: '/teacher/register-student', icon: UserPlus },
+        { label: 'Students', to: '/teacher/students', icon: GraduationCap },
+        { label: 'Classes', to: '/teacher/classes', icon: School },
+      ],
+    },
+    {
       title: 'CBT & Examination',
       items: [
         { label: 'CBT Examinations', to: '/exams', icon: Clock },
@@ -63,7 +71,6 @@ export const navigation = {
     {
       title: 'Teaching',
       items: [
-        { label: 'Classes', to: '/teacher/classes', icon: School },
         { label: 'Enter results', to: '/teacher/results', icon: ClipboardList },
         { label: 'LMS Quizzes', to: '/teacher/lms', icon: MonitorPlay },
       ],

@@ -39,7 +39,7 @@ function parseRows(text, classes) {
 
 export default function RegisterStudent() {
   const toast = useToast();
-  const classes = useFetch('/classes');
+  const classes = useFetch('/classes?all=true');
   const [mode, setMode] = useState('single');
 
   // ----- Single registration -----
