@@ -613,6 +613,8 @@ th.tt-today { color: var(--primary); }
   flex-direction: column;
   min-height: 100vh;
   background: var(--paper);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .cbt-proctor-preview {

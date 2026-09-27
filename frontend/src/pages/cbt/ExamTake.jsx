@@ -63,6 +63,7 @@ export default function ExamTake() {
   const monitorPeersRef = useRef(new Map());
   const monitorPendingCandidatesRef = useRef(new Map());
   const monitorSignalCursorRef = useRef(0);
+  const exitSubmitStartedRef = useRef(false);
 
   // 1. Initial Attempt Start or Resume
   useEffect(() => {
@@ -235,6 +236,40 @@ export default function ExamTake() {
     };
   }, [attempt?.id, proctoringReady]);
 
+  useEffect(() => {
+    if (!attempt?.id || submissionResult || submitting || autoSubmitting) return undefined;
+
+    function submitOnExit() {
+      if (exitSubmitStartedRef.current || !attempt?.id) return;
+      exitSubmitStartedRef.current = true;
+      clearInterval(autosaveRef.current);
+      clearInterval(timerRef.current);
+      setSavingStatus('Submitting because the exam was left...');
+
+      api.postKeepalive(`/cbt/attempts/${attempt.id}/submit`, {
+        answers: answersRef.current,
+        autoSubmitted: true,
+      }).then((res) => {
+        if (res.result) setSubmissionResult(res.result);
+      }).catch(() => {
+        exitSubmitStartedRef.current = false;
+      });
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') submitOnExit();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', submitOnExit);
+    window.addEventListener('popstate', submitOnExit);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', submitOnExit);
+      window.removeEventListener('popstate', submitOnExit);
+    };
+  }, [attempt?.id, submissionResult, submitting, autoSubmitting]);
+
   async function finishProctoring() {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
@@ -367,6 +402,18 @@ export default function ExamTake() {
     return `${pad(minutes)}:${pad(seconds)}`;
   }
 
+  function blockClipboard(event) {
+    event.preventDefault();
+  }
+
+  function blockExamShortcuts(event) {
+    const key = event.key.toLowerCase();
+    const commandPressed = event.ctrlKey || event.metaKey;
+    if ((commandPressed && ['a', 'c', 'p', 's', 'u', 'v', 'x'].includes(key)) || key === 'printscreen') {
+      event.preventDefault();
+    }
+  }
+
   // Render Post-Submission / Completed State
   if (submissionResult) {
     return (
@@ -479,7 +526,15 @@ export default function ExamTake() {
   const isTimeWarning = remainingSeconds !== null && remainingSeconds < 300; // < 5 mins
 
   return (
-    <div className="cbt-runner">
+    <div
+      className="cbt-runner"
+      onCopy={blockClipboard}
+      onCut={blockClipboard}
+      onPaste={blockClipboard}
+      onContextMenu={blockClipboard}
+      onKeyDown={blockExamShortcuts}
+      onDragStart={blockClipboard}
+    >
       <CameraPreview stream={cameraStream} unavailable={Boolean(proctoringError)} title="Your camera recording" />
       {/* Top Sticky Header */}
       <header className="cbt-header">
