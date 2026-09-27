@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Plus, Search, Trash2, Pencil, Wallet, Banknote, TrendingUp, AlertCircle } from 'lucide-react';
+import { Download, Plus, Search, Trash2, Pencil, Wallet, Banknote, TrendingUp, AlertCircle, Check } from 'lucide-react';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -41,6 +41,16 @@ export default function AdminFees() {
   async function downloadReceipt(p) {
     try {
       await api.download(`/payments/${p.id}/receipt`, `${p.receiptNo}.pdf`);
+    } catch (e) {
+      toast.error(e.message);
+    }
+  }
+
+  async function confirmTransfer(payment) {
+    try {
+      await api.post(`/payments/confirm/${payment.id}`);
+      toast.success('Bank transfer confirmed');
+      reloadAll();
     } catch (e) {
       toast.error(e.message);
     }
@@ -145,17 +155,20 @@ export default function AdminFees() {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Receipt</th><th>Student</th><th>Paid for</th><th className="num">Amount</th><th>Method</th><th>Date</th><th /></tr></thead>
+              <thead><tr><th>Reference</th><th>Student</th><th>Paid for</th><th className="num">Amount</th><th>Method</th><th>Status</th><th>Date</th><th /></tr></thead>
               <tbody>
                 {filteredPayments.map((p) => (
                   <tr key={p.id}>
-                    <td className="nowrap">{p.receiptNo}</td>
+                    <td className="nowrap">{p.reference}</td>
                     <td><div className="strong">{p.studentName}</div><div className="sub small muted">{p.className}</div></td>
                     <td>{p.feeTitle}</td>
                     <td className="num">{money(p.amount)}</td>
                     <td>{p.method}</td>
+                    <td><Badge tone={p.status === 'success' ? 'ok' : 'warn'}>{p.status === 'success' ? 'Confirmed' : 'Pending'}</Badge></td>
                     <td className="nowrap">{formatDate(p.date)}</td>
-                    <td><div className="actions"><button className="btn btn-outline btn-sm" onClick={() => downloadReceipt(p)}><Download size={15} />Receipt</button></div></td>
+                    <td><div className="actions">
+                      {p.status === 'pending' ? <button className="btn btn-primary btn-sm" onClick={() => confirmTransfer(p)}><Check size={15} />Confirm</button> : <button className="btn btn-outline btn-sm" onClick={() => downloadReceipt(p)}><Download size={15} />Receipt</button>}
+                    </div></td>
                   </tr>
                 ))}
               </tbody>

@@ -27,35 +27,69 @@ function describe(data, payment) {
 }
 
 // Shared by "student pays" and "admin records a payment"
-function createPayment(data, studentId, feeId, amount, method) {
+function createPayment(data, studentId, feeId, amount, method, options = {}) {
   const fee = data.fees.find((f) => f.id === Number(feeId));
   if (!fee) return { error: 'Choose a fee to pay' };
 
-  const status = feeStatus(data, studentId).find((f) => f.id === fee.id);
-  if (!status) return { error: 'That fee does not belong to the current term' };
+  const feeStatusRow = feeStatus(data, studentId).find((f) => f.id === fee.id);
+  if (!feeStatusRow) return { error: 'That fee does not belong to the current term' };
 
   const amt = Number(amount);
   if (!amt || amt <= 0) return { error: 'Enter a valid amount' };
-  if (amt > status.balance) {
-    return { error: `The balance on this fee is ${status.balance.toLocaleString()}. You cannot pay more than that.` };
+  if (amt > feeStatusRow.balance) {
+    return { error: `The balance on this fee is ${feeStatusRow.balance.toLocaleString()}. You cannot pay more than that.` };
   }
 
   const id = db.nextId(data.payments);
+  const status = options.status || 'success';
   const payment = {
     id,
     studentId,
     feeId: fee.id,
     amount: amt,
     method,
-    status: 'success',
-    reference: `CVC-${Date.now().toString(36).toUpperCase()}`,
-    receiptNo: `RCT-${String(id).padStart(5, '0')}`,
+    status,
+    reference: options.reference || `CVC-${Date.now().toString(36).toUpperCase()}`,
+    receiptNo: status === 'success' ? `RCT-${String(id).padStart(5, '0')}` : '',
     term: fee.term,
     session: fee.session,
     date: new Date().toISOString(),
   };
   data.payments.push(payment);
   return { payment };
+}
+
+async function paystackRequest(path, options = {}) {
+  if (!process.env.PAYSTACK_SECRET_KEY) throw new Error('Paystack is not configured on the server');
+  const response = await fetch(`https://api.paystack.co${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.status) throw new Error(body.message || 'Paystack request failed');
+  return body.data;
+}
+
+function parentChild(data, parentId, studentId) {
+  return data.users.find((u) => u.id === Number(studentId) && u.role === 'student' && u.parentId === parentId);
+}
+
+function notifyPayment(data, payment, child, prefix = 'Payment received') {
+  const receipt = describe(data, payment);
+  const admins = data.users.filter((u) => u.role === 'admin').map((u) => u.id);
+  notifyUsers(data, admins, {
+    title: prefix,
+    body: `${receipt.studentName}: NGN ${payment.amount.toLocaleString()} for ${receipt.feeTitle}.`,
+    type: 'payment',
+    link: '/fees',
+  });
+  if (child) notifyUsers(data, [child.id], {
+    title: 'Fee payment received',
+    body: `NGN ${payment.amount.toLocaleString()} was paid towards your ${receipt.feeTitle}.`,
+    type: 'payment',
+    link: '/fees',
+  });
+  return receipt;
 }
 
 // ---------- Fee items ----------
@@ -158,11 +192,108 @@ router.get('/children', requireRole('parent'), (req, res) => {
     .map((p) => describe(data, p))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  res.json({ settings: data.settings, children, payments });
+  res.json({ settings: data.settings, children, payments, paymentOptions: {
+    paystackConfigured: Boolean(process.env.PAYSTACK_PUBLIC_KEY && process.env.PAYSTACK_SECRET_KEY),
+    bank: {
+      name: process.env.SCHOOL_BANK_NAME || '',
+      accountName: process.env.SCHOOL_BANK_ACCOUNT_NAME || '',
+      accountNumber: process.env.SCHOOL_BANK_ACCOUNT_NUMBER || '',
+      code: process.env.SCHOOL_BANK_CODE || '',
+    },
+  } });
+});
+
+// POST /api/payments/paystack/initialize { studentId, feeId, amount, callbackUrl }
+router.post('/paystack/initialize', requireRole('parent'), async (req, res) => {
+  const { studentId, feeId, amount, callbackUrl } = req.body;
+  const data = db.read();
+  const child = parentChild(data, req.user.id, studentId);
+  if (!child) return res.status(403).json({ message: 'That is not one of your children' });
+  const fee = data.fees.find((item) => item.id === Number(feeId));
+  const status = fee && feeStatus(data, child.id).find((item) => item.id === fee.id);
+  const amt = Number(amount);
+  if (!status || !amt || amt <= 0 || amt > status.balance) return res.status(400).json({ message: 'Enter a valid amount for this fee' });
+  const parent = data.users.find((u) => u.id === req.user.id);
+
+  try {
+    const transaction = await paystackRequest('/transaction/initialize', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: parent.email,
+        amount: Math.round(amt * 100),
+        currency: 'NGN',
+        callback_url: callbackUrl,
+        metadata: { studentId: child.id, feeId: fee.id, parentId: req.user.id },
+      }),
+    });
+    res.json({ authorizationUrl: transaction.authorization_url, reference: transaction.reference });
+  } catch (err) {
+    res.status(502).json({ message: err.message });
+  }
+});
+
+// GET /api/payments/paystack/verify/:reference
+router.get('/paystack/verify/:reference', requireRole('parent'), async (req, res) => {
+  try {
+    const transaction = await paystackRequest(`/transaction/verify/${encodeURIComponent(req.params.reference)}`);
+    if (transaction.status !== 'success') return res.status(400).json({ message: 'Paystack has not confirmed this payment' });
+    const metadata = transaction.metadata || {};
+    const data = db.read();
+    const child = parentChild(data, req.user.id, metadata.studentId);
+    if (!child || Number(metadata.parentId) !== req.user.id) return res.status(403).json({ message: 'Payment ownership could not be verified' });
+    const existing = data.payments.find((payment) => payment.reference === transaction.reference);
+    if (existing) return res.json(describe(data, existing));
+
+    const result = createPayment(data, child.id, metadata.feeId, Number(transaction.amount) / 100, 'Paystack', { reference: transaction.reference });
+    if (result.error) return res.status(400).json({ message: result.error });
+    const receipt = notifyPayment(data, result.payment, child);
+    db.write(data);
+    res.status(201).json(receipt);
+  } catch (err) {
+    res.status(502).json({ message: err.message });
+  }
+});
+
+// POST /api/payments/bank-transfer { studentId, feeId, amount, reference }
+router.post('/bank-transfer', requireRole('parent'), (req, res) => {
+  const { studentId, feeId, amount, reference } = req.body;
+  const data = db.read();
+  const child = parentChild(data, req.user.id, studentId);
+  if (!child) return res.status(403).json({ message: 'That is not one of your children' });
+  const status = feeStatus(data, child.id).find((item) => item.id === Number(feeId));
+  const amt = Number(amount);
+  if (!status || !amt || amt <= 0 || amt > status.balance) return res.status(400).json({ message: 'Enter a valid amount for this fee' });
+  if (!String(reference || '').trim()) return res.status(400).json({ message: 'Enter your bank transfer reference' });
+  if (data.payments.some((payment) => payment.reference === String(reference).trim())) {
+    return res.status(409).json({ message: 'That transfer reference has already been submitted' });
+  }
+
+  const result = createPayment(data, child.id, feeId, amt, 'Bank transfer', { status: 'pending', reference: String(reference).trim() });
+  if (result.error) return res.status(400).json({ message: result.error });
+  const receipt = notifyPayment(data, result.payment, null, 'Bank transfer awaiting confirmation');
+  db.write(data);
+  res.status(201).json({ ...receipt, status: 'pending' });
+});
+
+// POST /api/payments/confirm/:id – admin confirms a bank transfer
+router.post('/confirm/:id', requireRole('admin'), (req, res) => {
+  const data = db.read();
+  const payment = data.payments.find((item) => item.id === Number(req.params.id) && item.status === 'pending');
+  if (!payment) return res.status(404).json({ message: 'Pending payment not found' });
+  const currentStatus = feeStatus(data, payment.studentId).find((item) => item.id === payment.feeId);
+  if (!currentStatus || payment.amount > currentStatus.balance) {
+    return res.status(400).json({ message: 'This transfer is larger than the remaining fee balance' });
+  }
+  payment.status = 'success';
+  payment.receiptNo = `RCT-${String(payment.id).padStart(5, '0')}`;
+  const child = data.users.find((user) => user.id === payment.studentId);
+  const receipt = notifyPayment(data, payment, child);
+  db.write(data);
+  res.json(receipt);
 });
 
 // POST /api/payments/pay-child  { studentId, feeId, amount, method, cardNumber }
-// A parent pays a fee for one of their own children. Same demo-only payment as /pay.
+// Legacy demo payment endpoint retained for student accounts.
 router.post('/pay-child', requireRole('parent'), (req, res) => {
   const { studentId, feeId, amount, method, cardNumber } = req.body;
   const data = db.read();

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Wallet, Baby } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -13,12 +14,29 @@ const TONE = { Paid: 'ok', 'Part paid': 'warn', Unpaid: 'danger' };
 export default function ParentFees() {
   const toast = useToast();
   const { data, loading, error, reload } = useFetch('/payments/children');
+  const [params, setParams] = useSearchParams();
   const [payFee, setPayFee] = useState(null); // { child, fee }
-  const [method, setMethod] = useState('Card');
+  const [method, setMethod] = useState('Paystack');
   const [amount, setAmount] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState('');
+  const [transferReference, setTransferReference] = useState('');
+  const paystackReference = params.get('reference') || params.get('trxref');
+
+  useEffect(() => {
+    if (!paystackReference) return;
+    let cancelled = false;
+    api.get(`/payments/paystack/verify/${encodeURIComponent(paystackReference)}`)
+      .then(() => {
+        if (cancelled) return;
+        toast.success('Paystack payment confirmed');
+        setParams((next) => { next.delete('reference'); next.delete('trxref'); return next; }, { replace: true });
+        reload();
+      })
+      .catch((err) => !cancelled && toast.error(err.message))
+      .finally(() => { cancelled = true; });
+    return () => { cancelled = true; };
+  }, [paystackReference, reload, setParams, toast]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
@@ -26,8 +44,8 @@ export default function ParentFees() {
   function openPay(child, fee) {
     setPayFee({ child, fee });
     setAmount(String(fee.balance));
-    setMethod('Card');
-    setCardNumber('');
+    setMethod(data.paymentOptions.paystackConfigured ? 'Paystack' : 'Bank transfer');
+    setTransferReference('');
     setPayError('');
   }
 
@@ -36,10 +54,24 @@ export default function ParentFees() {
     setPayError('');
     setBusy(true);
     try {
-      await api.post('/payments/pay-child', {
-        studentId: payFee.child.id, feeId: payFee.fee.id, amount: Number(amount), method, cardNumber,
+      if (method === 'Paystack') {
+        const result = await api.post('/payments/paystack/initialize', {
+          studentId: payFee.child.id,
+          feeId: payFee.fee.id,
+          amount: Number(amount),
+          callbackUrl: `${window.location.origin}/parent/fees`,
+        });
+        window.location.assign(result.authorizationUrl);
+        return;
+      }
+
+      await api.post('/payments/bank-transfer', {
+        studentId: payFee.child.id,
+        feeId: payFee.fee.id,
+        amount: Number(amount),
+        reference: transferReference,
       });
-      toast.success(`Payment for ${payFee.child.name}'s ${payFee.fee.title} was successful`);
+      toast.success('Transfer submitted. The school will confirm it shortly.');
       setPayFee(null);
       reload();
     } catch (err) {
@@ -117,7 +149,7 @@ export default function ParentFees() {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Child</th><th>Paid for</th><th className="num">Amount</th><th>Method</th><th>Date</th><th /></tr></thead>
+              <thead><tr><th>Child</th><th>Paid for</th><th className="num">Amount</th><th>Method</th><th>Status</th><th>Date</th><th /></tr></thead>
               <tbody>
                 {data.payments.map((p) => (
                   <tr key={p.id}>
@@ -125,9 +157,10 @@ export default function ParentFees() {
                     <td>{p.feeTitle}</td>
                     <td className="num">{money(p.amount)}</td>
                     <td>{p.method}</td>
+                    <td><Badge tone={p.status === 'success' ? 'ok' : 'warn'}>{p.status === 'success' ? 'Confirmed' : 'Pending'}</Badge></td>
                     <td>{formatDate(p.date)}</td>
                     <td className="right">
-                      <button className="btn btn-ghost btn-sm" onClick={() => downloadReceipt(p)}><Download size={14} />Receipt</button>
+                      {p.status === 'success' && <button className="btn btn-ghost btn-sm" onClick={() => downloadReceipt(p)}><Download size={14} />Receipt</button>}
                     </td>
                   </tr>
                 ))}
@@ -153,22 +186,31 @@ export default function ParentFees() {
               <div className="field">
                 <label htmlFor="method">Payment method</label>
                 <select id="method" className="select" value={method} onChange={(e) => setMethod(e.target.value)}>
-                  <option>Card</option>
+                  {data.paymentOptions.paystackConfigured && <option>Paystack</option>}
                   <option>Bank transfer</option>
-                  <option>USSD</option>
                 </select>
               </div>
-              {method === 'Card' && (
-                <div className="field">
-                  <label htmlFor="card">Card number</label>
-                  <input id="card" className="input" placeholder="4111 1111 1111 1111" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} required />
-                </div>
+              {method === 'Paystack' && <p className="hint">You will be redirected to Paystack to pay securely with your preferred method.</p>}
+              {method === 'Bank transfer' && (
+                <>
+                  <div className="success-panel">
+                    <div className="strong">Bank transfer details</div>
+                    <div className="small muted">Bank: {data.paymentOptions.bank.name || 'Contact the school office'}</div>
+                    <div className="small muted">Account name: {data.paymentOptions.bank.accountName || 'Not configured'}</div>
+                    <div className="small muted">Account number: {data.paymentOptions.bank.accountNumber || 'Not configured'}</div>
+                    {data.paymentOptions.bank.code && <div className="small muted">Bank code: {data.paymentOptions.bank.code}</div>}
+                  </div>
+                  <div className="field">
+                    <label htmlFor="transfer-reference">Transfer reference</label>
+                    <input id="transfer-reference" className="input" value={transferReference} onChange={(e) => setTransferReference(e.target.value)} placeholder="e.g. TRF123456" required />
+                  </div>
+                  <p className="hint">After transferring, submit the reference above. Your balance will update after the school confirms the transfer.</p>
+                </>
               )}
-              <p className="hint">This is a demo payment — no real money moves. A real deployment would connect a gateway like Paystack, Flutterwave or Stripe here.</p>
               {payError && <div className="error-note" role="alert">{payError}</div>}
               <div className="form-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setPayFee(null)}>Cancel</button>
-                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Paying…' : `Pay ${money(amount || 0)}`}</button>
+                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Processing…' : method === 'Paystack' ? 'Continue to Paystack' : 'Submit transfer'}</button>
               </div>
             </form>
           </div>
