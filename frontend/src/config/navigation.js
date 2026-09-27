@@ -2,7 +2,7 @@ import {
   LayoutDashboard, UserPlus, GraduationCap, Users, School, Award,
   MonitorPlay, Wallet, User, ClipboardList, Baby,
   Clock, Calendar, HelpCircle, Archive, Sliders, BarChart3,
-  Trophy, ShieldAlert, Layers
+  Trophy, ShieldAlert, Layers, Radio
 } from 'lucide-react';
 
 // The side navigation for each portal. To add a page:
@@ -76,6 +76,7 @@ export const navigation = {
       items: [
         { label: 'Enter results', to: '/teacher/results', icon: ClipboardList },
         { label: 'LMS Quizzes', to: '/teacher/lms', icon: MonitorPlay },
+        { label: 'Live classes', to: '/live-class', icon: Radio },
       ],
     },
     { title: 'Account', items: [{ label: 'Profile', to: '/teacher/profile', icon: User }] },
@@ -97,6 +98,7 @@ export const navigation = {
         { label: 'Classes', to: '/student/classes', icon: School },
         { label: 'Term Report', to: '/student/results', icon: Award },
         { label: 'LMS Quizzes', to: '/student/lms', icon: MonitorPlay },
+        { label: 'Live classes', to: '/live-class', icon: Radio },
       ],
     },
     { title: 'Payments', items: [{ label: 'Fees & receipts', to: '/student/fees', icon: Wallet }] },

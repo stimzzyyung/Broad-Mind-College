@@ -7,6 +7,7 @@ import Login from '../pages/Login.jsx';
 import Signup from '../pages/Signup.jsx';
 import NotFound from '../pages/NotFound.jsx';
 import Profile from '../pages/shared/Profile.jsx';
+import LiveClass from '../pages/shared/LiveClass.jsx';
 
 // ----- Principal (admin) portal -----
 import AdminHome from '../pages/admin/AdminHome.jsx';
@@ -78,6 +79,17 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/live-class"
+        element={
+          <ProtectedRoute roles={['teacher', 'student']}>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<LiveClass />} />
+      </Route>
 
       {/* ============================================================== */}
       {/* Root-Level CBT Routes with DashboardLayout */}

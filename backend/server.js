@@ -52,6 +52,7 @@ app.use('/api/payments', require('./routes/payments'));
 app.use('/api/results', require('./routes/results'));
 app.use('/api/lms', require('./routes/lms'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/live', require('./routes/live'));
 app.use('/api/cbt', require('./routes/cbt'));
 
 // Anything else
