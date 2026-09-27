@@ -43,6 +43,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // Each file in /routes handles one part of the portal
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/students', require('./routes/students'));
 app.use('/api/teachers', require('./routes/teachers'));

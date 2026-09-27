@@ -42,7 +42,10 @@ export const navigation = {
         { label: 'LMS Quizzes', to: '/admin/lms', icon: MonitorPlay },
       ],
     },
-    { title: 'Finance', items: [{ label: 'Fees & receipts', to: '/admin/fees', icon: Wallet }] },
+    { title: 'Finance', items: [
+      { label: 'Fees & receipts', to: '/admin/fees', icon: Wallet },
+      { label: 'School analytics', to: '/admin/analytics', icon: BarChart3 },
+    ] },
     { title: 'Account', items: [{ label: 'Profile', to: '/admin/profile', icon: User }] },
   ],
 

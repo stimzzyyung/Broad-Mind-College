@@ -17,6 +17,7 @@ import AdminClasses from '../pages/admin/AdminClasses.jsx';
 import AdminResults from '../pages/admin/AdminResults.jsx';
 import AdminLMS from '../pages/admin/AdminLMS.jsx';
 import AdminFees from '../pages/admin/AdminFees.jsx';
+import AdminAnalytics from '../pages/admin/AdminAnalytics.jsx';
 
 // ----- Teacher portal -----
 import TeacherHome from '../pages/teacher/TeacherHome.jsx';
@@ -225,6 +226,7 @@ export default function AppRoutes() {
         <Route path="results" element={<AdminResults />} />
         <Route path="lms" element={<AdminLMS />} />
         <Route path="fees" element={<AdminFees />} />
+        <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="profile" element={<Profile />} />
         <Route path="*" element={<NotFound />} />
       </Route>
