@@ -33,10 +33,10 @@ function getRoom(data, id) {
 
 function canAccessRoom(data, room, user) {
   if (!room) return false;
-  if (user.role === 'admin' || user.id === room.hostId) return true;
-  if (user.role === 'teacher') return teacherClassIds(data, user.id).includes(room.classId);
+  if (user.role === 'admin' || Number(user.id) === Number(room.hostId)) return true;
+  if (user.role === 'teacher') return teacherClassIds(data, user.id).some((classId) => Number(classId) === Number(room.classId));
   const student = data.users.find((item) => item.id === user.id && item.role === 'student');
-  return Boolean(student && student.classId === room.classId);
+  return Boolean(student && Number(student.classId) === Number(room.classId));
 }
 
 function removeExpired(data) {

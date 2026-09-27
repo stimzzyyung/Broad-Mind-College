@@ -7,13 +7,26 @@ import PageHeader from '../../components/ui/PageHeader.jsx';
 import { Loading, ErrorNote, EmptyState } from '../../components/ui/Feedback.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
 
-const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+const turnUrls = (import.meta.env.VITE_TURN_URL || '').split(',').map((url) => url.trim()).filter(Boolean);
+const rtcConfig = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    ...(turnUrls.length ? [{
+      urls: turnUrls,
+      username: import.meta.env.VITE_TURN_USERNAME,
+      credential: import.meta.env.VITE_TURN_CREDENTIAL,
+    }] : []),
+  ],
+  iceCandidatePoolSize: 10,
+};
 
 function VideoTile({ stream, name, local = false }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = stream || null;
+    if (!videoRef.current) return;
+    videoRef.current.srcObject = stream || null;
+    if (stream) videoRef.current.play().catch(() => {});
   }, [stream]);
 
   return (
@@ -32,6 +45,7 @@ export default function LiveClass() {
   const classesFetch = useFetch(user.role === 'teacher' ? '/classes' : null);
   const [room, setRoom] = useState(null);
   const [localStream, setLocalStream] = useState(null);
+  const [mediaReady, setMediaReady] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [selectedClass, setSelectedClass] = useState('');
   const [title, setTitle] = useState('');
@@ -44,9 +58,12 @@ export default function LiveClass() {
   const localVideoRef = useRef(null);
   const roomRef = useRef(null);
   const signalCursor = useRef(0);
+  const syncing = useRef(false);
 
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+    if (!localVideoRef.current) return;
+    localVideoRef.current.srcObject = localStream;
+    if (localStream) localVideoRef.current.play().catch(() => {});
   }, [localStream]);
 
   function closePeers() {
@@ -123,7 +140,8 @@ export default function LiveClass() {
   }
 
   async function syncRoom() {
-    if (!room) return;
+    if (!room || !mediaReady || syncing.current) return;
+    syncing.current = true;
     try {
       const availableRooms = await api.get('/live/rooms');
       const current = availableRooms.find((item) => item.id === room.id);
@@ -141,15 +159,17 @@ export default function LiveClass() {
       await processSignals(signals);
     } catch (err) {
       setCallError(err.message);
+    } finally {
+      syncing.current = false;
     }
   }
 
   useEffect(() => {
-    if (!room) return undefined;
+    if (!room || !mediaReady) return undefined;
     const timer = setInterval(syncRoom, 1500);
     syncRoom();
     return () => clearInterval(timer);
-  }, [room?.id, localStream]);
+  }, [room?.id, localStream, mediaReady]);
 
   useEffect(() => {
     if (room || user.role !== 'student') return undefined;
@@ -161,22 +181,42 @@ export default function LiveClass() {
     setBusy(true);
     setCallError('');
     try {
-      let stream = null;
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('Media devices are unavailable', 'NotSupportedError');
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      } catch (mediaError) {
-        if (!['NotAllowedError', 'NotFoundError', 'NotSupportedError'].includes(mediaError.name)) throw mediaError;
-        setCallError('You joined without camera or microphone access. You can still watch the live class.');
-      }
       const joined = await api.post(`/live/rooms/${nextRoom.id}/join`, {});
-      setLocalStream(stream);
-      setMicOn(Boolean(stream));
-      setCameraOn(Boolean(stream));
       setRoom(joined);
       roomRef.current = joined;
+      setMediaReady(false);
+
+      let stream = null;
+      let mediaMessage = '';
+      if (!window.isSecureContext) {
+        mediaMessage = 'Camera and microphone require HTTPS (or localhost). You joined and can still watch the live class.';
+      } else if (!navigator.mediaDevices?.getUserMedia) {
+        mediaMessage = 'This browser does not support camera or microphone access. You joined and can still watch the live class.';
+      } else {
+        const mediaResults = await Promise.allSettled([
+          navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
+          navigator.mediaDevices.getUserMedia({ audio: false, video: true }),
+        ]);
+        const tracks = mediaResults.flatMap((result) => result.status === 'fulfilled' ? result.value.getTracks() : []);
+        if (tracks.length) {
+          stream = new MediaStream(tracks);
+          if (mediaResults.some((result) => result.status === 'rejected')) {
+            mediaMessage = 'You joined with the available device(s); camera or microphone access was unavailable.';
+          }
+        } else {
+          const denied = mediaResults.some((result) => result.status === 'rejected' && result.reason?.name === 'NotAllowedError');
+          mediaMessage = denied
+            ? 'You joined without camera or microphone access. You can still watch the live class.'
+            : 'No working camera or microphone was found. You joined and can still watch the live class.';
+        }
+      }
+      setLocalStream(stream);
+      setMicOn(Boolean(stream?.getAudioTracks().length));
+      setCameraOn(Boolean(stream?.getVideoTracks().length));
+      setCallError(mediaMessage);
+      setMediaReady(true);
     } catch (err) {
-      setCallError(err.name === 'NotAllowedError' ? 'Camera and microphone permission is required to join a live class.' : err.message);
+      setCallError(err.message);
     } finally {
       setBusy(false);
     }
@@ -207,6 +247,7 @@ export default function LiveClass() {
     closePeers();
     localStream?.getTracks().forEach((track) => track.stop());
     setLocalStream(null);
+    setMediaReady(false);
     setRoom(null);
     roomRef.current = null;
     roomsFetch.reload();
@@ -230,12 +271,12 @@ export default function LiveClass() {
         {callError && <div className="live-call-error">{callError}</div>}
         <div className="live-call-shell">
           <div className="live-video-grid">
-            <div className="live-video-tile"><video ref={localVideoRef} autoPlay playsInline muted /><span>{user.name} (You)</span></div>
+            <div className="live-video-tile"><video ref={localVideoRef} autoPlay playsInline muted />{!localStream && <div className="live-video-placeholder"><Video size={28} /></div>}<span>{user.name} (You)</span></div>
             {room.participants.filter((participant) => participant.id !== user.id).map((participant) => <VideoTile key={participant.id} stream={remoteStreams[participant.id]} name={participant.name} />)}
           </div>
           <div className="live-call-controls">
-            <button className={`icon-btn live-control ${micOn ? '' : 'off'}`} onClick={() => toggleTrack('audio')} aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}>{micOn ? <Mic /> : <MicOff />}</button>
-            <button className={`icon-btn live-control ${cameraOn ? '' : 'off'}`} onClick={() => toggleTrack('video')} aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}>{cameraOn ? <Camera /> : <CameraOff />}</button>
+            <button className={`icon-btn live-control ${micOn ? '' : 'off'}`} onClick={() => toggleTrack('audio')} aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'} disabled={!localStream?.getAudioTracks().length}>{micOn ? <Mic /> : <MicOff />}</button>
+            <button className={`icon-btn live-control ${cameraOn ? '' : 'off'}`} onClick={() => toggleTrack('video')} aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'} disabled={!localStream?.getVideoTracks().length}>{cameraOn ? <Camera /> : <CameraOff />}</button>
             <button className="btn btn-danger" onClick={() => leaveRoom()}><Phone size={17} />{user.id === room.hostId ? 'End live class' : 'Leave class'}</button>
           </div>
         </div>
