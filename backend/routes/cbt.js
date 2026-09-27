@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../data/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { gradeFor } = require('../utils/helpers');
+const { gradeFor, teacherClassIds } = require('../utils/helpers');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -90,6 +90,17 @@ function ensureCbtCollections(data) {
   if (!data.cbt_audit_logs) data.cbt_audit_logs = [];
   if (!data.cbt_positions) data.cbt_positions = [];
   if (!data.cbt_proctoring) data.cbt_proctoring = [];
+  if (!Array.isArray(data.cbt_monitor_signals)) data.cbt_monitor_signals = [];
+  if (!Number.isInteger(data.cbt_monitor_signal_next_id)) data.cbt_monitor_signal_next_id = db.nextId(data.cbt_monitor_signals);
+}
+
+function canMonitorAttempt(data, attempt, user) {
+  if (!attempt) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'student') return Number(attempt.studentId) === Number(user.id);
+  if (user.role !== 'teacher') return false;
+  const student = data.users.find((item) => item.id === Number(attempt.studentId) && item.role === 'student');
+  return Boolean(student && teacherClassIds(data, user.id).some((classId) => Number(classId) === Number(student.classId)));
 }
 
 // Helper to log CBT access
@@ -1217,39 +1228,6 @@ router.post('/attempts/:id/save', requireRole('student'), (req, res) => {
       message: `Attempt is no longer in progress (status: ${attempt.status})`,
       status: attempt.status,
     });
-
-    // POST /api/cbt/attempts/:id/proctoring-recording - stores the completed camera recording
-    router.post(
-      '/attempts/:id/proctoring-recording',
-      requireRole('student'),
-      express.raw({ type: /video\/(webm|mp4)/, limit: '150mb' }),
-      (req, res) => {
-        const attemptId = Number(req.params.id);
-        const data = db.read();
-        ensureCbtCollections(data);
-        const attempt = data.cbt_attempts.find((item) => item.id === attemptId && item.studentId === req.user.id);
-        if (!attempt) return res.status(404).json({ message: 'Attempt not found' });
-        if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
-
-        const recordingsDir = path.join(__dirname, '..', 'data', 'proctoring');
-        fs.mkdirSync(recordingsDir, { recursive: true });
-        const fileName = `attempt-${attemptId}-${Date.now()}.webm`;
-        fs.writeFileSync(path.join(recordingsDir, fileName), req.body);
-        const recording = {
-          id: db.nextId(data.cbt_proctoring),
-          attemptId,
-          studentId: req.user.id,
-          examId: attempt.examId,
-          fileName,
-          mimeType: req.headers['content-type'] || 'video/webm',
-          bytes: req.body.length,
-          recordedAt: new Date().toISOString(),
-        };
-        data.cbt_proctoring.push(recording);
-        db.write(data);
-        res.status(201).json({ saved: true, recordingId: recording.id });
-      }
-    );
   }
 
   const exam = data.cbt_examinations.find((e) => e.id === attempt.examId);
@@ -1329,6 +1307,39 @@ router.post('/attempts/:id/save', requireRole('student'), (req, res) => {
     lastSaved: attempt.lastActivityTime,
   });
 });
+
+// POST /api/cbt/attempts/:id/proctoring-recording - stores the completed camera recording
+router.post(
+  '/attempts/:id/proctoring-recording',
+  requireRole('student'),
+  express.raw({ type: /video\/(webm|mp4)/, limit: '150mb' }),
+  (req, res) => {
+    const attemptId = Number(req.params.id);
+    const data = db.read();
+    ensureCbtCollections(data);
+    const attempt = data.cbt_attempts.find((item) => item.id === attemptId && item.studentId === req.user.id);
+    if (!attempt) return res.status(404).json({ message: 'Attempt not found' });
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
+
+    const recordingsDir = path.join(__dirname, '..', 'data', 'proctoring');
+    fs.mkdirSync(recordingsDir, { recursive: true });
+    const fileName = `attempt-${attemptId}-${Date.now()}.webm`;
+    fs.writeFileSync(path.join(recordingsDir, fileName), req.body);
+    const recording = {
+      id: db.nextId(data.cbt_proctoring),
+      attemptId,
+      studentId: req.user.id,
+      examId: attempt.examId,
+      fileName,
+      mimeType: req.headers['content-type'] || 'video/webm',
+      bytes: req.body.length,
+      recordedAt: new Date().toISOString(),
+    };
+    data.cbt_proctoring.push(recording);
+    db.write(data);
+    res.status(201).json({ saved: true, recordingId: recording.id });
+  }
+);
 
 // POST /api/cbt/attempts/:id/submit  – Manual or triggered submission
 router.post('/attempts/:id/submit', requireRole('student'), (req, res) => {
@@ -1521,6 +1532,78 @@ router.get('/exam-attempts', requireRole('teacher', 'admin'), (req, res) => {
   });
 
   res.json(enriched.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0)));
+});
+
+router.get('/monitor/active', requireRole('teacher', 'admin'), (req, res) => {
+  const data = db.read();
+  ensureCbtCollections(data);
+  const examId = req.query.examId ? Number(req.query.examId) : null;
+  const active = data.cbt_attempts
+    .filter((attempt) => attempt.status === 'In Progress' && (!examId || Number(attempt.examId) === examId) && canMonitorAttempt(data, attempt, req.user))
+    .map((attempt) => {
+      const student = data.users.find((item) => item.id === attempt.studentId);
+      const exam = data.cbt_examinations.find((item) => item.id === attempt.examId);
+      const cls = student && data.classes.find((item) => Number(item.id) === Number(student.classId));
+      return {
+        id: attempt.id,
+        studentId: attempt.studentId,
+        studentName: student?.name || attempt.studentName || 'Student',
+        studentSchoolId: student?.schoolId || '',
+        className: cls?.name || '',
+        examId: attempt.examId,
+        examTitle: exam?.title || attempt.examTitle || 'Examination',
+        startTime: attempt.startTime,
+        lastActivityTime: attempt.lastActivityTime,
+        status: attempt.status,
+      };
+    });
+  res.json(active);
+});
+
+router.get('/monitor/signals', requireRole('teacher', 'admin', 'student'), (req, res) => {
+  const data = db.read();
+  ensureCbtCollections(data);
+  const after = Number(req.query.after || 0);
+  const attemptId = req.query.attemptId ? Number(req.query.attemptId) : null;
+  const examId = req.query.examId ? Number(req.query.examId) : null;
+  const signals = data.cbt_monitor_signals.filter((signal) => {
+    if (signal.id <= after || Number(signal.toId) !== Number(req.user.id)) return false;
+    const attempt = data.cbt_attempts.find((item) => item.id === signal.attemptId);
+    return Boolean(attempt && (!attemptId || attempt.id === attemptId) && (!examId || Number(attempt.examId) === examId) && canMonitorAttempt(data, attempt, req.user));
+  });
+  res.json(signals);
+});
+
+router.post('/monitor/signals', requireRole('teacher', 'admin', 'student'), (req, res) => {
+  const { attemptId: rawAttemptId, toId: rawToId, type, payload } = req.body;
+  const attemptId = Number(rawAttemptId);
+  const toId = Number(rawToId);
+  const data = db.read();
+  ensureCbtCollections(data);
+  const attempt = data.cbt_attempts.find((item) => item.id === attemptId);
+  if (!attempt || !canMonitorAttempt(data, attempt, req.user)) return res.status(403).json({ message: 'You cannot monitor this examination attempt' });
+  if (!['offer', 'answer', 'candidate', 'leave'].includes(type)) return res.status(400).json({ message: 'Invalid monitoring signal' });
+
+  if (req.user.role === 'student') {
+    const recipient = data.users.find((item) => item.id === toId && ['teacher', 'admin'].includes(item.role));
+    if (!recipient || !canMonitorAttempt(data, attempt, recipient)) return res.status(403).json({ message: 'This staff member cannot monitor your attempt' });
+  } else if (toId !== Number(attempt.studentId)) {
+    return res.status(400).json({ message: 'Monitoring signals must be sent to the candidate' });
+  }
+
+  data.cbt_monitor_signals = data.cbt_monitor_signals.filter((signal) => Date.now() - new Date(signal.createdAt).getTime() < 10 * 60 * 1000);
+  const signal = {
+    id: data.cbt_monitor_signal_next_id++,
+    attemptId,
+    fromId: Number(req.user.id),
+    toId,
+    type,
+    payload: payload || null,
+    createdAt: new Date().toISOString(),
+  };
+  data.cbt_monitor_signals.push(signal);
+  db.write(data);
+  res.status(201).json({ ok: true, id: signal.id });
 });
 
 // POST /api/cbt/attempts/:id/override  – Teacher / Principal Attempt Override

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Users, RotateCcw, ShieldCheck, History, Sliders, CheckCircle2,
@@ -10,10 +10,12 @@ import Badge from '../../components/ui/Badge.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import { Loading, EmptyState } from '../../components/ui/Feedback.jsx';
 
+const ExamLiveMonitor = lazy(() => import('./ExamLiveMonitor.jsx'));
+
 export default function ExamAttempts() {
   const { id: routeExamId } = useParams();
 
-  const [activeTab, setActiveTab] = useState('attempts'); // 'attempts', 'audit', 'access'
+  const [activeTab, setActiveTab] = useState('attempts'); // 'attempts', 'monitor', 'audit', 'access'
   const [attempts, setAttempts] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [accessLogs, setAccessLogs] = useState([]);
@@ -118,12 +120,18 @@ export default function ExamAttempts() {
       />
 
       {/* Tabs */}
-      <div className="role-tabs" style={{ maxWidth: '540px', marginBottom: '24px' }}>
+      <div className="role-tabs" style={{ maxWidth: '700px', marginBottom: '24px' }}>
         <button
           className={`role-tab ${activeTab === 'attempts' ? 'active' : ''}`}
           onClick={() => setActiveTab('attempts')}
         >
           <Users size={16} /> Candidate Attempts
+        </button>
+        <button
+          className={`role-tab ${activeTab === 'monitor' ? 'active' : ''}`}
+          onClick={() => setActiveTab('monitor')}
+        >
+          <Clock size={16} /> Live Monitor
         </button>
         <button
           className={`role-tab ${activeTab === 'audit' ? 'active' : ''}`}
@@ -138,6 +146,8 @@ export default function ExamAttempts() {
           <History size={16} /> Access History
         </button>
       </div>
+
+      {activeTab === 'monitor' && <Suspense fallback={<Loading text="Opening live monitor..." />}><ExamLiveMonitor examId={routeExamId} /></Suspense>}
 
       {/* 1. CANDIDATE ATTEMPTS TAB */}
       {activeTab === 'attempts' && (

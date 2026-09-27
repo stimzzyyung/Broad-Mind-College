@@ -10,6 +10,19 @@ import Modal from '../../components/ui/Modal.jsx';
 import { Loading } from '../../components/ui/Feedback.jsx';
 import CameraPreview from '../../components/ui/CameraPreview.jsx';
 
+const turnUrls = (import.meta.env.VITE_TURN_URL || '').split(',').map((url) => url.trim()).filter(Boolean);
+const monitorRtcConfig = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    ...(turnUrls.length ? [{
+      urls: turnUrls,
+      username: import.meta.env.VITE_TURN_USERNAME,
+      credential: import.meta.env.VITE_TURN_CREDENTIAL,
+    }] : []),
+  ],
+  iceCandidatePoolSize: 10,
+};
+
 export default function ExamTake() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -32,6 +45,7 @@ export default function ExamTake() {
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [proctoringError, setProctoringError] = useState('');
+  const [proctoringReady, setProctoringReady] = useState(false);
 
   // Submission Modal
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
@@ -46,6 +60,9 @@ export default function ExamTake() {
   const recorderRef = useRef(null);
   const recordingChunksRef = useRef([]);
   const cameraStreamRef = useRef(null);
+  const monitorPeersRef = useRef(new Map());
+  const monitorPendingCandidatesRef = useRef(new Map());
+  const monitorSignalCursorRef = useRef(0);
 
   // 1. Initial Attempt Start or Resume
   useEffect(() => {
@@ -97,7 +114,7 @@ export default function ExamTake() {
       setAnswers(res.attempt.savedAnswers || {});
       setRemainingSeconds(res.remainingSeconds);
 
-      startProctoring();
+      await startProctoring();
       startCountdown(res.remainingSeconds);
       startPeriodicAutosave(res.attempt.id);
     } catch (err) {
@@ -109,6 +126,7 @@ export default function ExamTake() {
 
   async function startProctoring() {
     setProctoringError('');
+    setProctoringReady(false);
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
         throw new Error('This browser cannot provide the camera recording required for this examination.');
@@ -124,18 +142,105 @@ export default function ExamTake() {
       recorderRef.current = recorder;
       cameraStreamRef.current = stream;
       setCameraStream(stream);
+      setProctoringReady(true);
       return true;
     } catch (err) {
       setProctoringError(err.name === 'NotAllowedError'
         ? 'Camera permission is required before you can start this examination.'
         : err.message || 'Camera recording could not be started.');
+      setProctoringReady(true);
       return false;
     }
   }
 
+  async function sendMonitorSignal(attemptId, toId, type, payload) {
+    await api.post('/cbt/monitor/signals', { attemptId, toId, type, payload });
+  }
+
+  useEffect(() => {
+    if (!attempt?.id || !proctoringReady) return undefined;
+    let stopped = false;
+    let polling = false;
+
+    async function pollMonitorSignals() {
+      if (stopped || polling) return;
+      polling = true;
+      try {
+        const signals = await api.get(`/cbt/monitor/signals?attemptId=${attempt.id}&after=${monitorSignalCursorRef.current}`);
+        for (const signal of signals) {
+          monitorSignalCursorRef.current = Math.max(monitorSignalCursorRef.current, signal.id);
+          if (signal.type === 'leave') {
+            monitorPeersRef.current.get(signal.fromId)?.close();
+            monitorPeersRef.current.delete(signal.fromId);
+            monitorPendingCandidatesRef.current.delete(signal.fromId);
+            continue;
+          }
+
+          let peer = monitorPeersRef.current.get(signal.fromId);
+          if (!peer && signal.type === 'candidate') {
+            monitorPendingCandidatesRef.current.set(signal.fromId, [...(monitorPendingCandidatesRef.current.get(signal.fromId) || []), signal.payload]);
+            continue;
+          }
+          if (!peer && signal.type === 'offer') {
+            peer = new RTCPeerConnection(monitorRtcConfig);
+            monitorPeersRef.current.set(signal.fromId, peer);
+            cameraStreamRef.current?.getTracks().forEach((track) => peer.addTrack(track, cameraStreamRef.current));
+            peer.onconnectionstatechange = () => {
+              if (['failed', 'closed'].includes(peer.connectionState)) {
+                monitorPeersRef.current.delete(signal.fromId);
+                monitorPendingCandidatesRef.current.delete(signal.fromId);
+                peer.close();
+              }
+            };
+            peer.onicecandidate = (event) => {
+              if (event.candidate) sendMonitorSignal(attempt.id, signal.fromId, 'candidate', event.candidate.toJSON()).catch(() => {});
+            };
+          }
+          if (!peer) continue;
+
+          if (signal.type === 'offer') {
+            await peer.setRemoteDescription(signal.payload);
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            await sendMonitorSignal(attempt.id, signal.fromId, 'answer', answer);
+          } else if (signal.type === 'candidate') {
+            if (peer.remoteDescription) await peer.addIceCandidate(signal.payload);
+            else monitorPendingCandidatesRef.current.set(signal.fromId, [...(monitorPendingCandidatesRef.current.get(signal.fromId) || []), signal.payload]);
+          }
+
+          const candidates = monitorPendingCandidatesRef.current.get(signal.fromId) || [];
+          if (peer.remoteDescription && candidates.length) {
+            for (const candidate of candidates) await peer.addIceCandidate(candidate);
+            monitorPendingCandidatesRef.current.delete(signal.fromId);
+          }
+        }
+      } catch {
+        // A temporary polling failure should not interrupt the student's exam or local recording.
+      } finally {
+        polling = false;
+      }
+    }
+
+    pollMonitorSignals();
+    const timer = setInterval(pollMonitorSignals, 1000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      monitorPeersRef.current.forEach((peer, teacherId) => {
+        sendMonitorSignal(attempt.id, teacherId, 'leave').catch(() => {});
+        peer.close();
+      });
+      monitorPeersRef.current.clear();
+      monitorPendingCandidatesRef.current.clear();
+    };
+  }, [attempt?.id, proctoringReady]);
+
   async function finishProctoring() {
     const recorder = recorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
+    if (!recorder || recorder.state === 'inactive') {
+      setProctoringReady(false);
+      return;
+    }
     await new Promise((resolve) => {
       recorder.onstop = async () => {
         const blob = new Blob(recordingChunksRef.current, { type: 'video/webm' });
@@ -148,6 +253,7 @@ export default function ExamTake() {
           cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
           cameraStreamRef.current = null;
           setCameraStream(null);
+          setProctoringReady(false);
           resolve();
         }
       };
