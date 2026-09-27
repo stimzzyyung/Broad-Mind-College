@@ -626,11 +626,14 @@ th.tt-today { color: var(--primary); }
   border-radius: 10px;
   background: #220b17;
   box-shadow: 0 8px 24px rgba(34, 11, 23, 0.28);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
 }
 .cbt-proctor-preview video { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; transform: scaleX(-1); background: #220b17; }
 .cbt-proctor-preview > div { display: flex; align-items: center; gap: 5px; padding: 5px 8px; color: #fff; background: #e03131; font-size: 11px; font-weight: 700; }
 .cbt-proctor-preview > div svg { color: #fff; animation: proctor-blink 1.2s ease-in-out infinite; }
-.cbt-proctor-missing { position: fixed; top: 82px; right: 18px; z-index: 60; display: flex; align-items: center; gap: 5px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-2); background: #fff; font-size: 11px; box-shadow: 0 5px 18px rgba(34, 11, 23, 0.14); }
+.cbt-proctor-missing { position: fixed; top: 82px; right: 18px; z-index: 60; display: flex; align-items: center; gap: 5px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-2); background: #fff; font-size: 11px; box-shadow: 0 5px 18px rgba(34, 11, 23, 0.14); cursor: move; user-select: none; touch-action: none; }
 @keyframes proctor-blink { 50% { opacity: 0.35; } }
 
 .cbt-header {

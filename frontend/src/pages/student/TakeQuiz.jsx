@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, XCircle, Clock, ArrowLeft, ArrowRight, Camera, Circle } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import { Loading, ErrorNote } from '../../components/ui/Feedback.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
+import CameraPreview from '../../components/ui/CameraPreview.jsx';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
@@ -175,10 +176,7 @@ export default function TakeQuiz() {
 
   return (
     <>
-      {cameraStream ? <div className="cbt-proctor-preview" title="Your camera is recording this assessment">
-        <video ref={(node) => { if (node) node.srcObject = cameraStream; }} autoPlay playsInline muted />
-        <div><Circle size={10} fill="currentColor" /> Recording</div>
-      </div> : proctoringError && <div className="cbt-proctor-missing"><Camera size={14} /> Camera unavailable</div>}
+      <CameraPreview stream={cameraStream} unavailable={Boolean(proctoringError)} title="Your camera recording" />
       <div className="quiz-bar">
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)' }}>{data.title}</h2>

@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Clock, CheckCircle2, AlertTriangle, ArrowLeft, ArrowRight,
-  Wifi, WifiOff, Send, HelpCircle, Shield, Award, RotateCcw, Camera, Circle
+  Wifi, WifiOff, Send, HelpCircle, Shield, Award, RotateCcw
 } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import { Loading } from '../../components/ui/Feedback.jsx';
+import CameraPreview from '../../components/ui/CameraPreview.jsx';
 
 export default function ExamTake() {
   const { id } = useParams();
@@ -373,10 +374,7 @@ export default function ExamTake() {
 
   return (
     <div className="cbt-runner">
-      {cameraStream ? <div className="cbt-proctor-preview" title="Your camera is recording this examination">
-        <video ref={(node) => { if (node) node.srcObject = cameraStream; }} autoPlay playsInline muted />
-        <div><Circle size={10} fill="currentColor" /> Recording</div>
-      </div> : proctoringError && <div className="cbt-proctor-missing"><Camera size={14} /> Camera unavailable</div>}
+      <CameraPreview stream={cameraStream} unavailable={Boolean(proctoringError)} title="Your camera recording" />
       {/* Top Sticky Header */}
       <header className="cbt-header">
         <div className="cbt-header-inner">
