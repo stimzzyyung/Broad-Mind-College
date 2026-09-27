@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const db = require('../data/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { notifyUsers, notifyUser } = require('../data/notify');
@@ -175,6 +177,32 @@ router.post('/quizzes/:id/submit', requireRole('student'), (req, res) => {
 
   res.status(201).json({ ...summarise(data, quiz, req.user), questions: quiz.questions, submission });
 });
+
+// POST /api/lms/quizzes/:id/proctoring-recording - stores the completed camera recording
+router.post(
+  '/quizzes/:id/proctoring-recording',
+  requireRole('student'),
+  express.raw({ type: /video\/(webm|mp4)/, limit: '150mb' }),
+  (req, res) => {
+    const data = db.read();
+    if (!Array.isArray(data.lms_proctoring)) data.lms_proctoring = [];
+    const quiz = data.quizzes.find((item) => item.id === Number(req.params.id));
+    const student = data.users.find((item) => item.id === req.user.id && item.role === 'student');
+    if (!quiz || !student || student.classId !== quiz.classId) return res.status(403).json({ message: 'You cannot upload a recording for this assessment' });
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
+
+    const recordingsDir = path.join(__dirname, '..', 'data', 'proctoring');
+    fs.mkdirSync(recordingsDir, { recursive: true });
+    const fileName = `quiz-${quiz.id}-student-${student.id}-${Date.now()}.webm`;
+    fs.writeFileSync(path.join(recordingsDir, fileName), req.body);
+    data.lms_proctoring.push({
+      id: db.nextId(data.lms_proctoring), quizId: quiz.id, studentId: student.id, fileName,
+      mimeType: req.headers['content-type'] || 'video/webm', bytes: req.body.length, recordedAt: new Date().toISOString(),
+    });
+    db.write(data);
+    res.status(201).json({ saved: true });
+  }
+);
 
 // GET /api/lms/quizzes/:id/submissions  – who took it and how they did
 router.get('/quizzes/:id/submissions', requireRole('teacher', 'admin'), (req, res) => {

@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const db = require('../data/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { gradeFor } = require('../utils/helpers');
@@ -87,6 +89,7 @@ function ensureCbtCollections(data) {
   if (!data.cbt_access_logs) data.cbt_access_logs = [];
   if (!data.cbt_audit_logs) data.cbt_audit_logs = [];
   if (!data.cbt_positions) data.cbt_positions = [];
+  if (!data.cbt_proctoring) data.cbt_proctoring = [];
 }
 
 // Helper to log CBT access
@@ -1214,6 +1217,39 @@ router.post('/attempts/:id/save', requireRole('student'), (req, res) => {
       message: `Attempt is no longer in progress (status: ${attempt.status})`,
       status: attempt.status,
     });
+
+    // POST /api/cbt/attempts/:id/proctoring-recording - stores the completed camera recording
+    router.post(
+      '/attempts/:id/proctoring-recording',
+      requireRole('student'),
+      express.raw({ type: /video\/(webm|mp4)/, limit: '150mb' }),
+      (req, res) => {
+        const attemptId = Number(req.params.id);
+        const data = db.read();
+        ensureCbtCollections(data);
+        const attempt = data.cbt_attempts.find((item) => item.id === attemptId && item.studentId === req.user.id);
+        if (!attempt) return res.status(404).json({ message: 'Attempt not found' });
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
+
+        const recordingsDir = path.join(__dirname, '..', 'data', 'proctoring');
+        fs.mkdirSync(recordingsDir, { recursive: true });
+        const fileName = `attempt-${attemptId}-${Date.now()}.webm`;
+        fs.writeFileSync(path.join(recordingsDir, fileName), req.body);
+        const recording = {
+          id: db.nextId(data.cbt_proctoring),
+          attemptId,
+          studentId: req.user.id,
+          examId: attempt.examId,
+          fileName,
+          mimeType: req.headers['content-type'] || 'video/webm',
+          bytes: req.body.length,
+          recordedAt: new Date().toISOString(),
+        };
+        data.cbt_proctoring.push(recording);
+        db.write(data);
+        res.status(201).json({ saved: true, recordingId: recording.id });
+      }
+    );
   }
 
   const exam = data.cbt_examinations.find((e) => e.id === attempt.examId);

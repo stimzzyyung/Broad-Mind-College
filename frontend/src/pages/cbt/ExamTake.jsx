@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Clock, CheckCircle2, AlertTriangle, ArrowLeft, ArrowRight,
-  Wifi, WifiOff, Send, HelpCircle, Shield, Award, RotateCcw
+  Wifi, WifiOff, Send, HelpCircle, Shield, Award, RotateCcw, Camera, Circle
 } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -29,6 +29,9 @@ export default function ExamTake() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [savingStatus, setSavingStatus] = useState('Saved'); // 'Saving...', 'Saved', 'Error'
   const [autoSubmitting, setAutoSubmitting] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const [proctoringError, setProctoringError] = useState('');
 
   // Submission Modal
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
@@ -40,6 +43,9 @@ export default function ExamTake() {
   const autosaveRef = useRef(null);
   const answersRef = useRef(answers);
   answersRef.current = answers;
+  const recorderRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const cameraStreamRef = useRef(null);
 
   // 1. Initial Attempt Start or Resume
   useEffect(() => {
@@ -59,6 +65,8 @@ export default function ExamTake() {
       window.removeEventListener('offline', handleOffline);
       clearInterval(timerRef.current);
       clearInterval(autosaveRef.current);
+      recorderRef.current?.stop();
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, [id]);
 
@@ -89,16 +97,67 @@ export default function ExamTake() {
       setAnswers(res.attempt.savedAnswers || {});
       setRemainingSeconds(res.remainingSeconds);
 
-      // Start countdown timer
-      startCountdown(res.remainingSeconds);
-
-      // Start periodic autosave every 15 seconds
-      startPeriodicAutosave(res.attempt.id);
+      const recordingStarted = await startProctoring();
+      if (recordingStarted) {
+        // Start countdown timer only after camera recording is active.
+        startCountdown(res.remainingSeconds);
+        startPeriodicAutosave(res.attempt.id);
+      }
     } catch (err) {
       setInitError(err.message || 'Unable to access examination');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function startProctoring() {
+    setProctoringError('');
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        throw new Error('This browser cannot provide the camera recording required for this examination.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.start(1000);
+      recorderRef.current = recorder;
+      cameraStreamRef.current = stream;
+      setCameraStream(stream);
+      setRecording(true);
+      return true;
+    } catch (err) {
+      setProctoringError(err.name === 'NotAllowedError'
+        ? 'Camera permission is required before you can start this examination.'
+        : err.message || 'Camera recording could not be started.');
+      return false;
+    }
+  }
+
+  async function finishProctoring() {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    await new Promise((resolve) => {
+      recorder.onstop = async () => {
+        const blob = new Blob(recordingChunksRef.current, { type: 'video/webm' });
+        try {
+          await api.upload(`/cbt/attempts/${attempt?.id}/proctoring-recording`, blob, 'video/webm');
+        } catch (err) {
+          setProctoringError(`The camera recording could not be uploaded: ${err.message}`);
+        } finally {
+          recorderRef.current = null;
+          setRecording(false);
+          cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+          cameraStreamRef.current = null;
+          setCameraStream(null);
+          resolve();
+        }
+      };
+      recorder.stop();
+    });
   }
 
   // 2. Client-side countdown ticker (Server remains authority)
@@ -162,6 +221,7 @@ export default function ExamTake() {
     setSavingStatus('Auto Submitting...');
 
     try {
+      await finishProctoring();
       const res = await api.post(`/cbt/attempts/${attempt?.id}/submit`, {
         answers: answersRef.current,
         autoSubmitted: true,
@@ -178,6 +238,7 @@ export default function ExamTake() {
   async function handleManualSubmit() {
     setSubmitting(true);
     try {
+      await finishProctoring();
       const res = await api.post(`/cbt/attempts/${attempt?.id}/submit`, {
         answers: answersRef.current,
         autoSubmitted: false,
@@ -312,12 +373,32 @@ export default function ExamTake() {
 
   if (loading) return <Loading text="Authenticating examination session..." />;
 
+  if (!cameraStream && !proctoringError && exam && attempt) return <Loading text="Starting camera recording..." />;
+
+  if (proctoringError && !cameraStream) {
+    return (
+      <div className="fullpage" style={{ padding: '24px', background: 'var(--paper)' }}>
+        <div className="card" style={{ maxWidth: '540px', padding: '32px', textAlign: 'center' }}>
+          <Camera size={42} color="var(--danger)" style={{ margin: '0 auto 12px' }} />
+          <h3 style={{ marginBottom: '8px' }}>Camera recording required</h3>
+          <p style={{ color: 'var(--ink-2)', fontSize: '14px', marginBottom: '16px' }}>{proctoringError}</p>
+          <p style={{ color: 'var(--ink-2)', fontSize: '13px', marginBottom: '20px' }}>Your camera preview will remain visible in the top corner while you write. The recording is uploaded securely with your examination attempt.</p>
+          <button className="btn btn-primary" onClick={async () => { if (await startProctoring()) { startCountdown(remainingSeconds); startPeriodicAutosave(attempt.id); } }}><Camera size={17} />Allow camera and continue</button>
+        </div>
+      </div>
+    );
+  }
+
   const currentQ = questions[currentIndex] || {};
   const currentAnswer = answers[currentIndex];
   const isTimeWarning = remainingSeconds !== null && remainingSeconds < 300; // < 5 mins
 
   return (
     <div className="cbt-runner">
+      <div className="cbt-proctor-preview" title="Your camera is recording this examination">
+        <video ref={(node) => { if (node) node.srcObject = cameraStream; }} autoPlay playsInline muted />
+        <div><Circle size={10} fill="currentColor" /> Recording</div>
+      </div>
       {/* Top Sticky Header */}
       <header className="cbt-header">
         <div className="cbt-header-inner">

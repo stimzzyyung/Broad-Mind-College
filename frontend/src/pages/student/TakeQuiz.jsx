@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, XCircle, Clock, ArrowLeft, ArrowRight } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowLeft, ArrowRight, Camera, Circle } from 'lucide-react';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import { Loading, ErrorNote } from '../../components/ui/Feedback.jsx';
@@ -19,13 +19,67 @@ export default function TakeQuiz() {
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null); // filled in after submit
+  const [cameraStream, setCameraStream] = useState(null);
+  const [proctoringError, setProctoringError] = useState('');
+  const recorderRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const proctoringStartedRef = useRef(false);
 
   useEffect(() => {
     if (data && !data.submission) {
       setAnswers(new Array(data.questions.length).fill(null));
       setSecondsLeft(data.durationMins * 60);
+      if (!proctoringStartedRef.current) {
+        proctoringStartedRef.current = true;
+        startProctoring();
+      }
     }
   }, [data]);
+
+  useEffect(() => () => {
+    recorderRef.current?.stop();
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
+  async function startProctoring() {
+    setProctoringError('');
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('This browser cannot provide the camera recording required for this assessment.');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) recordingChunksRef.current.push(event.data); };
+      recorder.start(1000);
+      recorderRef.current = recorder;
+      cameraStreamRef.current = stream;
+      setCameraStream(stream);
+    } catch (err) {
+      setProctoringError(err.name === 'NotAllowedError' ? 'Camera permission is required before you can start this assessment.' : err.message || 'Camera recording could not be started.');
+    }
+  }
+
+  async function finishProctoring() {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    await new Promise((resolve) => {
+      recorder.onstop = async () => {
+        try {
+          await api.upload(`/lms/quizzes/${quizId}/proctoring-recording`, new Blob(recordingChunksRef.current, { type: 'video/webm' }), 'video/webm');
+        } catch (err) {
+          setProctoringError(`The camera recording could not be uploaded: ${err.message}`);
+        } finally {
+          recorderRef.current = null;
+          cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+          cameraStreamRef.current = null;
+          setCameraStream(null);
+          resolve();
+        }
+      };
+      recorder.stop();
+    });
+  }
 
   // Countdown timer — auto-submits when it reaches zero
   useEffect(() => {
@@ -42,6 +96,22 @@ export default function TakeQuiz() {
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
 
+  if (!cameraStream && !proctoringError && data && !data.submission && !result) return <Loading text="Starting camera recording..." />;
+
+  if (proctoringError && !cameraStream && !data.submission && !result) {
+    return (
+      <div className="fullpage" style={{ padding: '24px', background: 'var(--paper)' }}>
+        <div className="card" style={{ maxWidth: '540px', padding: '32px', textAlign: 'center' }}>
+          <Camera size={42} color="var(--danger)" style={{ margin: '0 auto 12px' }} />
+          <h3 style={{ marginBottom: '8px' }}>Camera recording required</h3>
+          <p style={{ color: 'var(--ink-2)', fontSize: '14px', marginBottom: '16px' }}>{proctoringError}</p>
+          <p style={{ color: 'var(--ink-2)', fontSize: '13px', marginBottom: '20px' }}>Your camera preview will remain visible in the top corner while you complete this assessment.</p>
+          <button className="btn btn-primary" onClick={startProctoring}><Camera size={17} />Allow camera and continue</button>
+        </div>
+      </div>
+    );
+  }
+
   const submission = result?.submission || data.submission;
 
   function selectAnswer(qi, oi) {
@@ -52,6 +122,7 @@ export default function TakeQuiz() {
     if (submitting) return;
     setSubmitting(true);
     try {
+      await finishProctoring();
       const res = await api.post(`/lms/quizzes/${quizId}/submit`, { answers });
       setResult(res);
       toast.success(`Submitted! You scored ${res.submission.score}/${res.submission.total}`);
@@ -120,6 +191,10 @@ export default function TakeQuiz() {
 
   return (
     <>
+      <div className="cbt-proctor-preview" title="Your camera is recording this assessment">
+        <video ref={(node) => { if (node) node.srcObject = cameraStream; }} autoPlay playsInline muted />
+        <div><Circle size={10} fill="currentColor" /> Recording</div>
+      </div>
       <div className="quiz-bar">
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)' }}>{data.title}</h2>

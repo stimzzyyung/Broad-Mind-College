@@ -14,9 +14,9 @@ const RAW_BACKEND_URL = isDev ? 'http://localhost:5000' : (import.meta.env.VITE_
 const BACKEND_URL = RAW_BACKEND_URL.replace(/\/+$/, '');
 const API_BASE = BACKEND_URL.endsWith('/api') ? BACKEND_URL : `${BACKEND_URL}/api`;
 
-async function request(path, { method = 'GET', body, asBlob = false } = {}) {
+async function request(path, { method = 'GET', body, asBlob = false, rawBody = false, contentType } = {}) {
   const headers = {};
-  if (body) headers['Content-Type'] = 'application/json';
+  if (body) headers['Content-Type'] = contentType || 'application/json';
   const token = tokenStore.get();
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -29,7 +29,7 @@ async function request(path, { method = 'GET', body, asBlob = false } = {}) {
       res = await fetch(url, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body ? (rawBody ? body : JSON.stringify(body)) : undefined,
       });
     } catch (err) {
       throw new Error('Cannot reach the server. Is the backend running?');
@@ -58,6 +58,7 @@ async function request(path, { method = 'GET', body, asBlob = false } = {}) {
 export const api = {
   get: (path) => request(path),
   post: (path, body) => request(path, { method: 'POST', body }),
+  upload: (path, body, contentType) => request(path, { method: 'POST', body, rawBody: true, contentType }),
   put: (path, body) => request(path, { method: 'PUT', body }),
   del: (path) => request(path, { method: 'DELETE' }),
 

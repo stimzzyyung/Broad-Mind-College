@@ -72,9 +72,12 @@ export default function LiveClass() {
     peerConnections.current.set(participant.id, peer);
     localStream?.getTracks().forEach((track) => peer.addTrack(track, localStream));
     peer.onicecandidate = (event) => event.candidate && sendSignal(participant.id, 'candidate', event.candidate.toJSON()).catch(() => {});
-    peer.ontrack = (event) => setRemoteStreams((current) => ({ ...current, [participant.id]: event.streams[0] }));
+    peer.ontrack = (event) => {
+      const stream = event.streams[0] || new MediaStream([event.track]);
+      setRemoteStreams((current) => ({ ...current, [participant.id]: stream }));
+    };
     peer.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
+      if (['failed', 'closed'].includes(peer.connectionState)) {
         peer.close();
         peerConnections.current.delete(participant.id);
         setRemoteStreams((current) => { const next = { ...current }; delete next[participant.id]; return next; });
