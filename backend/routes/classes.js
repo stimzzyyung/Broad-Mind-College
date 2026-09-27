@@ -111,7 +111,7 @@ router.put('/:id', requireRole('admin'), (req, res) => {
 
 // PUT /api/classes/:id/timetable  { periods: [...], days: { Monday: [...], ... } }
 // Replaces the whole weekly timetable for a class.
-router.put('/:id/timetable', (req, res) => {
+router.put('/:id/timetable', requireRole('admin', 'teacher'), (req, res) => {
   const data = db.read();
   const cls = data.classes.find((c) => c.id === Number(req.params.id));
   if (!cls) return res.status(404).json({ message: 'Class not found' });
