@@ -30,7 +30,6 @@ export default function ExamTake() {
   const [savingStatus, setSavingStatus] = useState('Saved'); // 'Saving...', 'Saved', 'Error'
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
-  const [recording, setRecording] = useState(false);
   const [proctoringError, setProctoringError] = useState('');
 
   // Submission Modal
@@ -97,12 +96,9 @@ export default function ExamTake() {
       setAnswers(res.attempt.savedAnswers || {});
       setRemainingSeconds(res.remainingSeconds);
 
-      const recordingStarted = await startProctoring();
-      if (recordingStarted) {
-        // Start countdown timer only after camera recording is active.
-        startCountdown(res.remainingSeconds);
-        startPeriodicAutosave(res.attempt.id);
-      }
+      startProctoring();
+      startCountdown(res.remainingSeconds);
+      startPeriodicAutosave(res.attempt.id);
     } catch (err) {
       setInitError(err.message || 'Unable to access examination');
     } finally {
@@ -127,7 +123,6 @@ export default function ExamTake() {
       recorderRef.current = recorder;
       cameraStreamRef.current = stream;
       setCameraStream(stream);
-      setRecording(true);
       return true;
     } catch (err) {
       setProctoringError(err.name === 'NotAllowedError'
@@ -149,7 +144,6 @@ export default function ExamTake() {
           setProctoringError(`The camera recording could not be uploaded: ${err.message}`);
         } finally {
           recorderRef.current = null;
-          setRecording(false);
           cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
           cameraStreamRef.current = null;
           setCameraStream(null);
@@ -373,32 +367,16 @@ export default function ExamTake() {
 
   if (loading) return <Loading text="Authenticating examination session..." />;
 
-  if (!cameraStream && !proctoringError && exam && attempt) return <Loading text="Starting camera recording..." />;
-
-  if (proctoringError && !cameraStream) {
-    return (
-      <div className="fullpage" style={{ padding: '24px', background: 'var(--paper)' }}>
-        <div className="card" style={{ maxWidth: '540px', padding: '32px', textAlign: 'center' }}>
-          <Camera size={42} color="var(--danger)" style={{ margin: '0 auto 12px' }} />
-          <h3 style={{ marginBottom: '8px' }}>Camera recording required</h3>
-          <p style={{ color: 'var(--ink-2)', fontSize: '14px', marginBottom: '16px' }}>{proctoringError}</p>
-          <p style={{ color: 'var(--ink-2)', fontSize: '13px', marginBottom: '20px' }}>Your camera preview will remain visible in the top corner while you write. The recording is uploaded securely with your examination attempt.</p>
-          <button className="btn btn-primary" onClick={async () => { if (await startProctoring()) { startCountdown(remainingSeconds); startPeriodicAutosave(attempt.id); } }}><Camera size={17} />Allow camera and continue</button>
-        </div>
-      </div>
-    );
-  }
-
   const currentQ = questions[currentIndex] || {};
   const currentAnswer = answers[currentIndex];
   const isTimeWarning = remainingSeconds !== null && remainingSeconds < 300; // < 5 mins
 
   return (
     <div className="cbt-runner">
-      <div className="cbt-proctor-preview" title="Your camera is recording this examination">
+      {cameraStream ? <div className="cbt-proctor-preview" title="Your camera is recording this examination">
         <video ref={(node) => { if (node) node.srcObject = cameraStream; }} autoPlay playsInline muted />
         <div><Circle size={10} fill="currentColor" /> Recording</div>
-      </div>
+      </div> : proctoringError && <div className="cbt-proctor-missing"><Camera size={14} /> Camera unavailable</div>}
       {/* Top Sticky Header */}
       <header className="cbt-header">
         <div className="cbt-header-inner">

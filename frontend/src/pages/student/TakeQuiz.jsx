@@ -96,22 +96,6 @@ export default function TakeQuiz() {
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
 
-  if (!cameraStream && !proctoringError && data && !data.submission && !result) return <Loading text="Starting camera recording..." />;
-
-  if (proctoringError && !cameraStream && !data.submission && !result) {
-    return (
-      <div className="fullpage" style={{ padding: '24px', background: 'var(--paper)' }}>
-        <div className="card" style={{ maxWidth: '540px', padding: '32px', textAlign: 'center' }}>
-          <Camera size={42} color="var(--danger)" style={{ margin: '0 auto 12px' }} />
-          <h3 style={{ marginBottom: '8px' }}>Camera recording required</h3>
-          <p style={{ color: 'var(--ink-2)', fontSize: '14px', marginBottom: '16px' }}>{proctoringError}</p>
-          <p style={{ color: 'var(--ink-2)', fontSize: '13px', marginBottom: '20px' }}>Your camera preview will remain visible in the top corner while you complete this assessment.</p>
-          <button className="btn btn-primary" onClick={startProctoring}><Camera size={17} />Allow camera and continue</button>
-        </div>
-      </div>
-    );
-  }
-
   const submission = result?.submission || data.submission;
 
   function selectAnswer(qi, oi) {
@@ -191,10 +175,10 @@ export default function TakeQuiz() {
 
   return (
     <>
-      <div className="cbt-proctor-preview" title="Your camera is recording this assessment">
+      {cameraStream ? <div className="cbt-proctor-preview" title="Your camera is recording this assessment">
         <video ref={(node) => { if (node) node.srcObject = cameraStream; }} autoPlay playsInline muted />
         <div><Circle size={10} fill="currentColor" /> Recording</div>
-      </div>
+      </div> : proctoringError && <div className="cbt-proctor-missing"><Camera size={14} /> Camera unavailable</div>}
       <div className="quiz-bar">
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)' }}>{data.title}</h2>
