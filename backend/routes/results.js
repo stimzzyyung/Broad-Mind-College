@@ -59,42 +59,6 @@ router.get('/my', requireRole('student'), (req, res) => {
   });
 });
 
-// GET /api/results/child/:studentId – a parent can view a linked child's results
-router.get('/child/:studentId', requireRole('parent'), (req, res) => {
-  const data = db.read();
-  const child = data.users.find(
-    (u) => u.id === Number(req.params.studentId) && u.role === 'student' && u.parentId === req.user.id
-  );
-  if (!child) return res.status(404).json({ message: 'Child not found' });
-
-  const mine = data.results.filter((r) => r.studentId === child.id);
-  const terms = availableTerms(mine);
-  const term = req.query.term || (terms[0] && terms[0].term);
-  const session = req.query.session || (terms[0] && terms[0].session);
-  const rows = term
-    ? mine.filter((r) => r.term === term && r.session === session).map((r) => ({ ...r, ...gradeFor(r.total) }))
-    : [];
-
-  let summary = null;
-  if (rows.length) {
-    const total = rows.reduce((sum, r) => sum + r.total, 0);
-    const average = Number((total / rows.length).toFixed(1));
-    const ranking = classRanking(data, child.classId, term, session);
-    const childRank = ranking.find((r) => r.student.id === child.id);
-    summary = {
-      total, average, grade: gradeFor(average).grade,
-      position: childRank ? childRank.position : null, outOf: ranking.length, subjects: rows.length,
-    };
-  }
-
-  const cls = data.classes.find((c) => c.id === child.classId);
-  res.json({
-    terms, term, session, results: rows, summary,
-    student: { id: child.id, name: child.name, schoolId: child.schoolId, className: cls ? cls.name : '' },
-    school: data.settings,
-  });
-});
-
 // ---------- Teacher & admin ----------
 
 // GET /api/results?classId=1&subject=Mathematics&term=First Term&session=2026/2027

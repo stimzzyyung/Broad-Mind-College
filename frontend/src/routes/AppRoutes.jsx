@@ -39,7 +39,6 @@ import StudentFees from '../pages/student/StudentFees.jsx';
 import ParentHome from '../pages/parent/ParentHome.jsx';
 import ParentChildren from '../pages/parent/ParentChildren.jsx';
 import ParentFees from '../pages/parent/ParentFees.jsx';
-import ParentAcademics from '../pages/parent/ParentAcademics.jsx';
 
 // ----- Advanced CBT & Examination Management System Pages -----
 import QuestionBank from '../pages/cbt/QuestionBank.jsx';
@@ -294,7 +293,6 @@ export default function AppRoutes() {
       >
         <Route index element={<ParentHome />} />
         <Route path="children" element={<ParentChildren />} />
-        <Route path="academics" element={<ParentAcademics />} />
         <Route path="fees" element={<ParentFees />} />
         <Route path="profile" element={<Profile />} />
         <Route path="*" element={<NotFound />} />
