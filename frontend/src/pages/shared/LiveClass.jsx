@@ -148,15 +148,28 @@ export default function LiveClass() {
     return () => clearInterval(timer);
   }, [room?.id, localStream]);
 
+  useEffect(() => {
+    if (room || user.role !== 'student') return undefined;
+    const timer = setInterval(() => roomsFetch.reload(), 3000);
+    return () => clearInterval(timer);
+  }, [room?.id, user.role, roomsFetch.reload]);
+
   async function joinRoom(nextRoom) {
     setBusy(true);
     setCallError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      let stream = null;
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('Media devices are unavailable', 'NotSupportedError');
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (mediaError) {
+        if (!['NotAllowedError', 'NotFoundError', 'NotSupportedError'].includes(mediaError.name)) throw mediaError;
+        setCallError('You joined without camera or microphone access. You can still watch the live class.');
+      }
       const joined = await api.post(`/live/rooms/${nextRoom.id}/join`, {});
       setLocalStream(stream);
-      setMicOn(true);
-      setCameraOn(true);
+      setMicOn(Boolean(stream));
+      setCameraOn(Boolean(stream));
       setRoom(joined);
       roomRef.current = joined;
     } catch (err) {
