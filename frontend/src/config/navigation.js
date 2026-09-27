@@ -107,7 +107,10 @@ export const navigation = {
 
   parent: [
     { title: null, items: [{ label: 'Home', to: '/parent', icon: LayoutDashboard, end: true }] },
-    { title: 'Family', items: [{ label: 'My children', to: '/parent/children', icon: Baby }] },
+    { title: 'Family', items: [
+      { label: 'My children', to: '/parent/children', icon: Baby },
+      { label: 'Results & timetable', to: '/parent/academics', icon: Award },
+    ] },
     { title: 'Payments', items: [{ label: 'Pay fees & receipts', to: '/parent/fees', icon: Wallet }] },
     { title: 'Account', items: [{ label: 'Profile', to: '/parent/profile', icon: User }] },
   ],

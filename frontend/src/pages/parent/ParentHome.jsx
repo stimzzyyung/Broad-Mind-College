@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Baby, UserPlus, Wallet, ArrowRight } from 'lucide-react';
+import { Baby, UserPlus, Wallet, ArrowRight, Award } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import useFetch from '../../hooks/useFetch.js';
 import StatCard from '../../components/ui/StatCard.jsx';
@@ -36,7 +36,10 @@ export default function ParentHome() {
         <div className="card card-flush">
           <div className="card-head">
             <h3>Your children</h3>
-            <Link to="/parent/children" className="btn btn-ghost btn-sm">Manage <ArrowRight size={15} /></Link>
+            <div className="row">
+              <Link to="/parent/academics" className="btn btn-ghost btn-sm"><Award size={15} />Results & timetable</Link>
+              <Link to="/parent/children" className="btn btn-ghost btn-sm">Manage <ArrowRight size={15} /></Link>
+            </div>
           </div>
           {data.children.length === 0 ? (
             <EmptyState

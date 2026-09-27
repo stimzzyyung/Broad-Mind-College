@@ -57,6 +57,10 @@ router.get('/:id', (req, res) => {
     const me = data.users.find((u) => u.id === req.user.id);
     if (me.classId !== cls.id) return res.status(403).json({ message: 'This is not your class' });
   }
+  if (req.user.role === 'parent') {
+    const hasChildInClass = data.users.some((u) => u.role === 'student' && u.parentId === req.user.id && u.classId === cls.id);
+    if (!hasChildInClass) return res.status(403).json({ message: 'This class is not assigned to one of your children' });
+  }
 
   const students = data.users
     .filter((u) => u.role === 'student' && u.classId === cls.id)
