@@ -109,12 +109,18 @@ router.put('/:id', requireRole('admin'), (req, res) => {
   res.json(describe(data, cls));
 });
 
-// PUT /api/classes/:id/timetable  { periods: [...], days: { Monday: [...], ... } }  (admin only)
+// PUT /api/classes/:id/timetable  { periods: [...], days: { Monday: [...], ... } }
 // Replaces the whole weekly timetable for a class.
-router.put('/:id/timetable', requireRole('admin'), (req, res) => {
+router.put('/:id/timetable', (req, res) => {
   const data = db.read();
   const cls = data.classes.find((c) => c.id === Number(req.params.id));
   if (!cls) return res.status(404).json({ message: 'Class not found' });
+
+  if (req.user.role !== 'admin' && (
+    req.user.role !== 'teacher' || !teacherClassIds(data, req.user.id).includes(cls.id)
+  )) {
+    return res.status(403).json({ message: 'Only an assigned teacher can edit this timetable' });
+  }
 
   const { periods, days } = req.body;
 
