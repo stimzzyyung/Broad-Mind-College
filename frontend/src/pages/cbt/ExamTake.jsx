@@ -27,6 +27,7 @@ export default function ExamTake() {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const requiresFullscreen = window.matchMedia('(min-width: 768px) and (pointer: fine)').matches;
 
   // Core Test State
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,8 @@ export default function ExamTake() {
   const [cameraStream, setCameraStream] = useState(null);
   const [proctoringError, setProctoringError] = useState('');
   const [proctoringReady, setProctoringReady] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [fullscreenError, setFullscreenError] = useState('');
 
   // Submission Modal
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
@@ -64,6 +67,7 @@ export default function ExamTake() {
   const monitorPendingCandidatesRef = useRef(new Map());
   const monitorSignalCursorRef = useRef(0);
   const exitSubmitStartedRef = useRef(false);
+  const hasEnteredFullscreenRef = useRef(Boolean(document.fullscreenElement));
 
   // 1. Initial Attempt Start or Resume
   useEffect(() => {
@@ -260,15 +264,36 @@ export default function ExamTake() {
       if (document.visibilityState === 'hidden') submitOnExit();
     }
 
+    function handleFullscreenChange() {
+      const fullscreenActive = Boolean(document.fullscreenElement);
+      setIsFullscreen(fullscreenActive);
+      if (fullscreenActive) {
+        hasEnteredFullscreenRef.current = true;
+      } else if (requiresFullscreen && hasEnteredFullscreenRef.current) {
+        submitOnExit();
+      }
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
     window.addEventListener('pagehide', submitOnExit);
     window.addEventListener('popstate', submitOnExit);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('pagehide', submitOnExit);
       window.removeEventListener('popstate', submitOnExit);
     };
-  }, [attempt?.id, submissionResult, submitting, autoSubmitting]);
+  }, [attempt?.id, submissionResult, submitting, autoSubmitting, requiresFullscreen]);
+
+  async function enterFullscreen() {
+    setFullscreenError('');
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch {
+      setFullscreenError('Fullscreen could not be started. Allow fullscreen access in your browser and try again.');
+    }
+  }
 
   async function finishProctoring() {
     const recorder = recorderRef.current;
@@ -520,6 +545,28 @@ export default function ExamTake() {
   }
 
   if (loading) return <Loading text="Authenticating examination session..." />;
+
+  if (requiresFullscreen && !isFullscreen) {
+    return (
+      <div className="fullpage" style={{ padding: '24px', background: 'var(--paper)' }}>
+        <div className="card" style={{ maxWidth: '520px', padding: '32px', textAlign: 'center' }}>
+          <Shield size={40} color="var(--primary)" style={{ margin: '0 auto 12px' }} />
+          <h2 style={{ marginBottom: '8px', color: 'var(--ink)' }}>Fullscreen Required</h2>
+          <p style={{ color: 'var(--ink-2)', fontSize: '14px', marginBottom: '20px' }}>
+            Enter fullscreen to continue your examination. Leaving fullscreen will submit your exam.
+          </p>
+          {fullscreenError && (
+            <p role="alert" style={{ color: 'var(--danger)', fontSize: '14px', marginBottom: '16px' }}>
+              {fullscreenError}
+            </p>
+          )}
+          <button className="btn btn-primary" onClick={enterFullscreen}>
+            Enter Fullscreen
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentQ = questions[currentIndex] || {};
   const currentAnswer = answers[currentIndex];
