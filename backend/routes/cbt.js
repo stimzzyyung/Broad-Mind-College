@@ -1321,7 +1321,7 @@ router.post(
     if (!attempt) return res.status(404).json({ message: 'Attempt not found' });
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
 
-    const recordingsDir = path.join(__dirname, '..', 'data', 'proctoring');
+    const recordingsDir = path.resolve(process.env.PROCTORING_DIR || path.join(__dirname, '..', 'data', 'proctoring'));
     fs.mkdirSync(recordingsDir, { recursive: true });
     const fileName = `attempt-${attemptId}-${Date.now()}.webm`;
     fs.writeFileSync(path.join(recordingsDir, fileName), req.body);

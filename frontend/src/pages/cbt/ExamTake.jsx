@@ -47,6 +47,7 @@ export default function ExamTake() {
   const [cameraStream, setCameraStream] = useState(null);
   const [proctoringError, setProctoringError] = useState('');
   const [proctoringReady, setProctoringReady] = useState(false);
+  const [proctoringAudioAvailable, setProctoringAudioAvailable] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
   const [fullscreenError, setFullscreenError] = useState('');
 
@@ -136,9 +137,20 @@ export default function ExamTake() {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
         throw new Error('This browser cannot provide the camera recording required for this examination.');
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setProctoringAudioAvailable(true);
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setProctoringAudioAvailable(false);
+      }
+      const mimeType = [
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp9,opus',
+        'video/webm',
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recordingChunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) recordingChunksRef.current.push(event.data);
@@ -582,7 +594,12 @@ export default function ExamTake() {
       onKeyDown={blockExamShortcuts}
       onDragStart={blockClipboard}
     >
-      <CameraPreview stream={cameraStream} unavailable={Boolean(proctoringError)} title="Your camera recording" />
+      <CameraPreview
+        stream={cameraStream}
+        unavailable={Boolean(proctoringError)}
+        audioEnabled={proctoringAudioAvailable}
+        title={proctoringAudioAvailable ? 'Your camera and microphone recording' : 'Your camera recording; microphone audio is unavailable'}
+      />
       {/* Top Sticky Header */}
       <header className="cbt-header">
         <div className="cbt-header-inner">

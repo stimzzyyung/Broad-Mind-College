@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Circle } from 'lucide-react';
+import { Camera, Circle, Mic, MicOff } from 'lucide-react';
 
-export default function CameraPreview({ stream, unavailable = false, title }) {
+export default function CameraPreview({ stream, unavailable = false, audioEnabled = false, title }) {
   const videoRef = useRef(null);
   const dragRef = useRef(null);
   const [position, setPosition] = useState(null);
@@ -50,7 +50,12 @@ export default function CameraPreview({ stream, unavailable = false, title }) {
   return (
     <div className={stream ? 'cbt-proctor-preview' : 'cbt-proctor-missing'} style={style} title={`${title}. Drag to move`} onPointerDown={startDrag}>
       {stream ? <video ref={videoRef} autoPlay playsInline muted /> : <Camera size={14} />}
-      <div>{stream ? <><Circle size={10} fill="currentColor" /> Recording</> : 'Camera unavailable'}</div>
+      <div>
+        {stream ? <>
+          <Circle size={10} fill="currentColor" /> Recording
+          {audioEnabled ? <><Mic size={12} /> Audio on</> : <><MicOff size={12} /> Audio off</>}
+        </> : 'Camera unavailable'}
+      </div>
     </div>
   );
 }

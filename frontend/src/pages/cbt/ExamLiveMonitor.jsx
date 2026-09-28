@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Circle, Radio, RefreshCw, VideoOff } from 'lucide-react';
+import { Camera, Circle, Radio, RefreshCw, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { api } from '../../api/client.js';
 
 const turnUrls = (import.meta.env.VITE_TURN_URL || '').split(',').map((url) => url.trim()).filter(Boolean);
@@ -15,7 +15,7 @@ const monitorRtcConfig = {
   iceCandidatePoolSize: 10,
 };
 
-function CandidateVideo({ candidate, stream, connectionState }) {
+function CandidateVideo({ candidate, stream, connectionState, audioEnabled, onToggleAudio }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ function CandidateVideo({ candidate, stream, connectionState }) {
   return (
     <article className="cbt-monitor-tile">
       <div className="cbt-monitor-video">
-        <video ref={videoRef} autoPlay playsInline />
+        <video ref={videoRef} autoPlay playsInline muted={!audioEnabled} />
         {!stream && (
           <div className="cbt-monitor-placeholder">
             {connectionState === 'failed' ? <VideoOff size={24} /> : <Camera size={24} />}
@@ -42,6 +42,23 @@ function CandidateVideo({ candidate, stream, connectionState }) {
         <div className="cbt-monitor-name">{candidate.studentName}</div>
         <div className="cbt-monitor-detail">{candidate.studentSchoolId || 'Student'}{candidate.className ? ` · ${candidate.className}` : ''}</div>
         {!recent && <div className="cbt-monitor-warning">Candidate activity has not synced recently</div>}
+        <button
+          type="button"
+          className="btn btn-outline btn-sm cbt-monitor-audio"
+          disabled={!stream?.getAudioTracks().some((track) => track.readyState === 'live')}
+          aria-label={audioEnabled ? `Mute ${candidate.studentName}` : `Listen to ${candidate.studentName}`}
+          onClick={() => {
+            const nextEnabled = !audioEnabled;
+            onToggleAudio();
+            if (videoRef.current) {
+              videoRef.current.muted = !nextEnabled;
+              if (nextEnabled) videoRef.current.play().catch(() => {});
+            }
+          }}
+        >
+          {audioEnabled ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          {audioEnabled ? 'Mute audio' : 'Listen'}
+        </button>
       </div>
     </article>
   );
@@ -51,9 +68,11 @@ export default function ExamLiveMonitor({ examId }) {
   const [candidates, setCandidates] = useState([]);
   const [streams, setStreams] = useState({});
   const [connectionStates, setConnectionStates] = useState({});
+  const [audioCandidateId, setAudioCandidateId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
+  const [compactView, setCompactView] = useState(false);
   const peersRef = useRef(new Map());
   const candidatesRef = useRef(new Map());
   const pendingCandidatesRef = useRef(new Map());
@@ -69,6 +88,7 @@ export default function ExamLiveMonitor({ examId }) {
     const peer = new RTCPeerConnection(monitorRtcConfig);
     peersRef.current.set(candidate.id, peer);
     peer.addTransceiver('video', { direction: 'recvonly' });
+    peer.addTransceiver('audio', { direction: 'recvonly' });
     peer.ontrack = (event) => {
       const stream = event.streams[0] || new MediaStream([event.track]);
       setStreams((current) => ({ ...current, [candidate.id]: stream }));
@@ -192,7 +212,13 @@ export default function ExamLiveMonitor({ examId }) {
           <h3>Live candidate monitor</h3>
           <p>{candidates.length} candidate{candidates.length === 1 ? '' : 's'} in progress · video streams are live during their exam</p>
         </div>
-        <div className="cbt-monitor-indicator"><Radio size={16} /> Live monitor</div>
+        <div className="cbt-monitor-controls">
+          <label className="cbt-monitor-compact-toggle">
+            <input type="checkbox" checked={compactView} onChange={(event) => setCompactView(event.target.checked)} />
+            Compact grid
+          </label>
+          <div className="cbt-monitor-indicator"><Radio size={16} /> Live monitor</div>
+        </div>
       </div>
       {error && <div className="live-call-error">{error}</div>}
       {loading ? (
@@ -200,13 +226,15 @@ export default function ExamLiveMonitor({ examId }) {
       ) : candidates.length === 0 ? (
         <div className="empty"><Camera size={22} /><h4>No active candidates</h4><p>Students will appear here while they are taking an examination.</p></div>
       ) : (
-        <div className="cbt-monitor-grid">
+        <div className={`cbt-monitor-grid ${compactView ? 'compact' : ''}`}>
           {candidates.map((candidate) => (
             <CandidateVideo
               key={candidate.id}
               candidate={candidate}
               stream={streams[candidate.id]}
               connectionState={connectionStates[candidate.id]}
+              audioEnabled={audioCandidateId === candidate.id}
+              onToggleAudio={() => setAudioCandidateId((current) => current === candidate.id ? null : candidate.id)}
             />
           ))}
         </div>
