@@ -20,7 +20,7 @@ const rtcConfig = {
   iceCandidatePoolSize: 10,
 };
 
-function VideoTile({ stream, name, local = false }) {
+function VideoTile({ stream, name, local = false, cameraOn = true }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -30,9 +30,9 @@ function VideoTile({ stream, name, local = false }) {
   }, [stream]);
 
   return (
-    <div className="live-video-tile">
+    <div className={`live-video-tile ${local ? 'local' : ''}`}>
       <video ref={videoRef} autoPlay playsInline muted={local} />
-      {!stream && <div className="live-video-placeholder"><Video size={28} /></div>}
+      {(!stream || (local && !cameraOn)) && <div className="live-video-placeholder"><Video size={28} /><span>{local && !cameraOn ? 'Your camera is off' : 'Camera unavailable'}</span></div>}
       <span>{name}{local ? ' (You)' : ''}</span>
     </div>
   );
@@ -55,16 +55,9 @@ export default function LiveClass() {
   const [callError, setCallError] = useState('');
   const peerConnections = useRef(new Map());
   const pendingCandidates = useRef(new Map());
-  const localVideoRef = useRef(null);
   const roomRef = useRef(null);
   const signalCursor = useRef(0);
   const syncing = useRef(false);
-
-  useEffect(() => {
-    if (!localVideoRef.current) return;
-    localVideoRef.current.srcObject = localStream;
-    if (localStream) localVideoRef.current.play().catch(() => {});
-  }, [localStream]);
 
   function closePeers() {
     peerConnections.current.forEach((peer) => peer.close());
@@ -271,7 +264,7 @@ export default function LiveClass() {
         {callError && <div className="live-call-error">{callError}</div>}
         <div className="live-call-shell">
           <div className="live-video-grid">
-            <div className="live-video-tile"><video ref={localVideoRef} autoPlay playsInline muted />{!localStream && <div className="live-video-placeholder"><Video size={28} /></div>}<span>{user.name} (You)</span></div>
+            <VideoTile stream={localStream} name={user.name} local cameraOn={cameraOn} />
             {room.participants.filter((participant) => participant.id !== user.id).map((participant) => <VideoTile key={participant.id} stream={remoteStreams[participant.id]} name={participant.name} />)}
           </div>
           <div className="live-call-controls">

@@ -15,7 +15,7 @@ const ExamLiveMonitor = lazy(() => import('./ExamLiveMonitor.jsx'));
 export default function ExamAttempts() {
   const { id: routeExamId } = useParams();
 
-  const [activeTab, setActiveTab] = useState('attempts'); // 'attempts', 'monitor', 'audit', 'access'
+  const [activeTab, setActiveTab] = useState(routeExamId ? 'monitor' : 'attempts'); // 'attempts', 'monitor', 'audit', 'access'
   const [attempts, setAttempts] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [accessLogs, setAccessLogs] = useState([]);
