@@ -1,4 +1,4 @@
-# Broad-Mind College (BMS) portal — MySQL database
+# Broad-Mind (BMS) portal — MySQL database
 
 Two files here, meant to be imported in order:
 
