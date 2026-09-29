@@ -1,5 +1,5 @@
 -- ==========================================================
--- Seed data for the Broad Mind Private School portal
+-- Seed data for the Broad-Mind College (BMS) portal
 -- Generated to match backend/data/seed.js exactly (same demo
 -- people, classes, timetable pattern and sample scores).
 -- ==========================================================
@@ -8,7 +8,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 -- Settings (single row)
 INSERT INTO settings (id, school_name, motto, session, term, address, phone, email) VALUES
-  (1, 'Broad Mind Private School', 'Knowledge with character', '2026/2027', 'First Term', '12 Unity Road', '0801 234 5678', 'info@crestview.edu');
+  (1, 'Broad-Mind College (BMS)', 'Knowledge with character', '2026/2027', 'First Term', '12 Unity Road', '0801 234 5678', 'info@broadmindcollege.edu');
 
 -- Classes (form_teacher_id is set further down, once the teachers exist)
 INSERT INTO classes (id, name, level) VALUES
@@ -18,20 +18,20 @@ INSERT INTO classes (id, name, level) VALUES
 
 -- Users: 1 principal, 3 teachers, 9 students, 1 parent
 INSERT INTO users (id, role, school_id, name, email, password, phone, gender, dob, class_id, parent_id, guardian_name, guardian_phone, address, bio, qualification, status, created_at) VALUES
-  (1, 'admin', 'CVC/ADM/001', 'Dr. Adaeze Okonkwo', 'principal@crestview.edu', '$2b$08$ArAWUSsNHuToY5e0oiArpe5I5aqN.mWXe3eTnUUPZgwfoV0Z68AK6', '0803 555 0101', NULL, NULL, NULL, NULL, NULL, NULL, 'Staff quarters, Block A', 'Principal since 2019.', NULL, 'active', NOW() - INTERVAL 400 DAY),
-  (2, 'teacher', 'CVC/TCH/001', 'Mr. Tunde Bakare', 'tunde@crestview.edu', '$2b$08$/hYotag3VYl2ulgZC5KL1.RkkGL3G5k5MElHSud.HtXhCoz2cXbl.', '0803 555 0102', NULL, NULL, NULL, NULL, NULL, NULL, '', '', 'B.Sc Mathematics, PGDE', 'active', NOW() - INTERVAL 300 DAY),
-  (3, 'teacher', 'CVC/TCH/002', 'Mrs. Ngozi Eze', 'ngozi@crestview.edu', '$2b$08$/hYotag3VYl2ulgZC5KL1.RkkGL3G5k5MElHSud.HtXhCoz2cXbl.', '0803 555 0103', NULL, NULL, NULL, NULL, NULL, NULL, '', '', 'B.A English, PGDE', 'active', NOW() - INTERVAL 300 DAY),
-  (4, 'teacher', 'CVC/TCH/003', 'Mr. Ibrahim Musa', 'ibrahim@crestview.edu', '$2b$08$/hYotag3VYl2ulgZC5KL1.RkkGL3G5k5MElHSud.HtXhCoz2cXbl.', '0803 555 0104', NULL, NULL, NULL, NULL, NULL, NULL, '', '', 'B.Sc Integrated Science', 'active', NOW() - INTERVAL 300 DAY),
-  (5, 'student', 'CVC/26/001', 'Chinedu Okafor', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2014-01-15', 1, 14, 'Mr/Mrs Okafor', '0805 555 0110', '3 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 40 DAY),
-  (6, 'student', 'CVC/26/002', 'Aisha Bello', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2014-02-15', 1, NULL, 'Mr/Mrs Bello', '0805 555 0111', '4 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 36 DAY),
-  (7, 'student', 'CVC/26/003', 'Tobi Adeyemi', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2014-03-15', 1, NULL, 'Mr/Mrs Adeyemi', '0805 555 0112', '5 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 32 DAY),
-  (8, 'student', 'CVC/26/004', 'Ifeoma Nwosu', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2013-04-15', 2, NULL, 'Mr/Mrs Nwosu', '0805 555 0113', '6 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 28 DAY),
-  (9, 'student', 'CVC/26/005', 'Emeka Obi', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2013-05-15', 2, NULL, 'Mr/Mrs Obi', '0805 555 0114', '7 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 24 DAY),
-  (10, 'student', 'CVC/26/006', 'Fatima Yusuf', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2013-06-15', 2, NULL, 'Mr/Mrs Yusuf', '0805 555 0115', '8 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 20 DAY),
-  (11, 'student', 'CVC/26/007', 'Seun Ogunleye', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2011-07-15', 3, NULL, 'Mr/Mrs Ogunleye', '0805 555 0116', '9 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 16 DAY),
-  (12, 'student', 'CVC/26/008', 'Blessing Udoh', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2011-08-15', 3, NULL, 'Mr/Mrs Udoh', '0805 555 0117', '10 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 12 DAY),
-  (13, 'student', 'CVC/26/009', 'Kelechi Anyanwu', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2011-09-15', 3, NULL, 'Mr/Mrs Anyanwu', '0805 555 0118', '11 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 8 DAY),
-  (14, 'parent', NULL, 'Grace Okafor', 'parent@crestview.edu', '$2b$08$tA/A6dF6VWGqcx2ass3V.uA5AorHNQimAkkFpxmiJVUeBsNwNyXm.', '0805 555 0110', NULL, NULL, NULL, NULL, NULL, NULL, '3 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 40 DAY);
+  (1, 'admin', 'BMS/ADM/001', 'Dr. Adaeze Okonkwo', 'principal@broadmindcollege.edu', '$2b$08$ArAWUSsNHuToY5e0oiArpe5I5aqN.mWXe3eTnUUPZgwfoV0Z68AK6', '0803 555 0101', NULL, NULL, NULL, NULL, NULL, NULL, 'Staff quarters, Block A', 'Principal since 2019.', NULL, 'active', NOW() - INTERVAL 400 DAY),
+  (2, 'teacher', 'BMS/TCH/001', 'Mr. Tunde Bakare', 'tunde@broadmindcollege.edu', '$2b$08$/hYotag3VYl2ulgZC5KL1.RkkGL3G5k5MElHSud.HtXhCoz2cXbl.', '0803 555 0102', NULL, NULL, NULL, NULL, NULL, NULL, '', '', 'B.Sc Mathematics, PGDE', 'active', NOW() - INTERVAL 300 DAY),
+  (3, 'teacher', 'BMS/TCH/002', 'Mrs. Ngozi Eze', 'ngozi@broadmindcollege.edu', '$2b$08$/hYotag3VYl2ulgZC5KL1.RkkGL3G5k5MElHSud.HtXhCoz2cXbl.', '0803 555 0103', NULL, NULL, NULL, NULL, NULL, NULL, '', '', 'B.A English, PGDE', 'active', NOW() - INTERVAL 300 DAY),
+  (4, 'teacher', 'BMS/TCH/003', 'Mr. Ibrahim Musa', 'ibrahim@broadmindcollege.edu', '$2b$08$/hYotag3VYl2ulgZC5KL1.RkkGL3G5k5MElHSud.HtXhCoz2cXbl.', '0803 555 0104', NULL, NULL, NULL, NULL, NULL, NULL, '', '', 'B.Sc Integrated Science', 'active', NOW() - INTERVAL 300 DAY),
+  (5, 'student', 'BMS/26/001', 'Chinedu Okafor', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2014-01-15', 1, 14, 'Mr/Mrs Okafor', '0805 555 0110', '3 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 40 DAY),
+  (6, 'student', 'BMS/26/002', 'Aisha Bello', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2014-02-15', 1, NULL, 'Mr/Mrs Bello', '0805 555 0111', '4 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 36 DAY),
+  (7, 'student', 'BMS/26/003', 'Tobi Adeyemi', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2014-03-15', 1, NULL, 'Mr/Mrs Adeyemi', '0805 555 0112', '5 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 32 DAY),
+  (8, 'student', 'BMS/26/004', 'Ifeoma Nwosu', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2013-04-15', 2, NULL, 'Mr/Mrs Nwosu', '0805 555 0113', '6 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 28 DAY),
+  (9, 'student', 'BMS/26/005', 'Emeka Obi', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2013-05-15', 2, NULL, 'Mr/Mrs Obi', '0805 555 0114', '7 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 24 DAY),
+  (10, 'student', 'BMS/26/006', 'Fatima Yusuf', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2013-06-15', 2, NULL, 'Mr/Mrs Yusuf', '0805 555 0115', '8 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 20 DAY),
+  (11, 'student', 'BMS/26/007', 'Seun Ogunleye', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2011-07-15', 3, NULL, 'Mr/Mrs Ogunleye', '0805 555 0116', '9 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 16 DAY),
+  (12, 'student', 'BMS/26/008', 'Blessing Udoh', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Female', '2011-08-15', 3, NULL, 'Mr/Mrs Udoh', '0805 555 0117', '10 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 12 DAY),
+  (13, 'student', 'BMS/26/009', 'Kelechi Anyanwu', NULL, '$2b$08$bm3YyDHymckOvNXxIh/sM.OdTUndIS01wbNuaWpNkvveL40uj2Y3O', '', 'Male', '2011-09-15', 3, NULL, 'Mr/Mrs Anyanwu', '0805 555 0118', '11 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 8 DAY),
+  (14, 'parent', NULL, 'Grace Okafor', 'parent@broadmindcollege.edu', '$2b$08$tA/A6dF6VWGqcx2ass3V.uA5AorHNQimAkkFpxmiJVUeBsNwNyXm.', '0805 555 0110', NULL, NULL, NULL, NULL, NULL, NULL, '3 Palm Avenue', NULL, NULL, 'active', NOW() - INTERVAL 40 DAY);
 
 -- Now that the teachers exist, assign each class its form teacher
 UPDATE classes SET form_teacher_id = 2 WHERE id = 1;
@@ -161,17 +161,17 @@ INSERT INTO fees (id, title, amount, term, session) VALUES
 
 -- Sample payments
 INSERT INTO payments (id, student_id, fee_id, amount, method, status, reference, receipt_no, term, session, date) VALUES
-  (1, 5, 1, 85000.00, 'Card', 'success', 'CVC-SEED0001', 'RCT-00001', 'First Term', '2026/2027', NOW() - INTERVAL 6 DAY),
-  (2, 5, 2, 5000.00, 'Card', 'success', 'CVC-SEED0002', 'RCT-00002', 'First Term', '2026/2027', NOW() - INTERVAL 6 DAY),
-  (3, 6, 1, 40000.00, 'Bank transfer', 'success', 'CVC-SEED0003', 'RCT-00003', 'First Term', '2026/2027', NOW() - INTERVAL 5 DAY),
-  (4, 7, 3, 15000.00, 'Bank transfer', 'success', 'CVC-SEED0004', 'RCT-00004', 'First Term', '2026/2027', NOW() - INTERVAL 4 DAY),
-  (5, 8, 1, 85000.00, 'Card', 'success', 'CVC-SEED0005', 'RCT-00005', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
-  (6, 8, 2, 5000.00, 'Card', 'success', 'CVC-SEED0006', 'RCT-00006', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
-  (7, 8, 3, 15000.00, 'Card', 'success', 'CVC-SEED0007', 'RCT-00007', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
-  (8, 8, 4, 3000.00, 'Card', 'success', 'CVC-SEED0008', 'RCT-00008', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
-  (9, 9, 1, 60000.00, 'Bank transfer', 'success', 'CVC-SEED0009', 'RCT-00009', 'First Term', '2026/2027', NOW() - INTERVAL 2 DAY),
-  (10, 11, 1, 85000.00, 'Card', 'success', 'CVC-SEED0010', 'RCT-00010', 'First Term', '2026/2027', NOW() - INTERVAL 1 DAY),
-  (11, 12, 2, 5000.00, 'Card', 'success', 'CVC-SEED0011', 'RCT-00011', 'First Term', '2026/2027', NOW() - INTERVAL 1 DAY);
+  (1, 5, 1, 85000.00, 'Korapay', 'success', 'BMS-SEED0001', 'RCT-00001', 'First Term', '2026/2027', NOW() - INTERVAL 6 DAY),
+  (2, 5, 2, 5000.00, 'Korapay', 'success', 'BMS-SEED0002', 'RCT-00002', 'First Term', '2026/2027', NOW() - INTERVAL 6 DAY),
+  (3, 6, 1, 40000.00, 'Bank transfer', 'success', 'BMS-SEED0003', 'RCT-00003', 'First Term', '2026/2027', NOW() - INTERVAL 5 DAY),
+  (4, 7, 3, 15000.00, 'Bank transfer', 'success', 'BMS-SEED0004', 'RCT-00004', 'First Term', '2026/2027', NOW() - INTERVAL 4 DAY),
+  (5, 8, 1, 85000.00, 'Korapay', 'success', 'BMS-SEED0005', 'RCT-00005', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
+  (6, 8, 2, 5000.00, 'Korapay', 'success', 'BMS-SEED0006', 'RCT-00006', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
+  (7, 8, 3, 15000.00, 'Korapay', 'success', 'BMS-SEED0007', 'RCT-00007', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
+  (8, 8, 4, 3000.00, 'Korapay', 'success', 'BMS-SEED0008', 'RCT-00008', 'First Term', '2026/2027', NOW() - INTERVAL 3 DAY),
+  (9, 9, 1, 60000.00, 'Bank transfer', 'success', 'BMS-SEED0009', 'RCT-00009', 'First Term', '2026/2027', NOW() - INTERVAL 2 DAY),
+  (10, 11, 1, 85000.00, 'Korapay', 'success', 'BMS-SEED0010', 'RCT-00010', 'First Term', '2026/2027', NOW() - INTERVAL 1 DAY),
+  (11, 12, 2, 5000.00, 'Korapay', 'success', 'BMS-SEED0011', 'RCT-00011', 'First Term', '2026/2027', NOW() - INTERVAL 1 DAY);
 
 -- Results for last term, generated with the same pseudo-random formula seed.js uses,
 -- so the numbers match a fresh `npm run seed` exactly.
@@ -262,10 +262,13 @@ INSERT INTO announcements (title, body, author, posted_by, date) VALUES
   ('First-term fees', 'Please complete first-term fee payments before the end of October. Receipts can be downloaded from the portal.', 'Dr. Adaeze Okonkwo', 1, NOW() - INTERVAL 4 DAY),
   ('Inter-house sports trials', 'Trials hold next week. See your sports teacher to register.', 'Dr. Adaeze Okonkwo', 1, NOW() - INTERVAL 1 DAY);
 
+-- CBT collections use the API's JSON extension table.
+INSERT INTO portal_extensions (id, payload) VALUES (1, JSON_OBJECT());
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- Demo logins (all use the school's normal sign-in form):
---   Principal : principal@crestview.edu / admin123
---   Teacher   : tunde@crestview.edu     / teacher123
---   Student   : CVC/26/001              / student123
---   Parent    : parent@crestview.edu    / parent123
+--   Principal : principal@broadmindcollege.edu / admin123
+--   Teacher   : tunde@broadmindcollege.edu     / teacher123
+--   Student   : BMS/26/001                     / student123
+--   Parent    : parent@broadmindcollege.edu    / parent123

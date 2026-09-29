@@ -126,6 +126,15 @@ router.delete('/:id', (req, res) => {
       if (s.teacherId === id) s.teacherId = null;
     });
   });
+  data.results.forEach((result) => {
+    if (result.teacherId === id) result.teacherId = null;
+  });
+  const removedQuizIds = data.quizzes
+    .filter((quiz) => quiz.teacherId === id)
+    .map((quiz) => quiz.id);
+  data.quizzes = data.quizzes.filter((quiz) => quiz.teacherId !== id);
+  data.submissions = data.submissions.filter((submission) => !removedQuizIds.includes(submission.quizId));
+  data.notifications = data.notifications.filter((notification) => notification.userId !== id);
   db.write(data);
   res.json({ message: 'Teacher removed' });
 });

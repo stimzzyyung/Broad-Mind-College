@@ -2,7 +2,7 @@
 Generates seed_data.sql — INSERT statements that mirror backend/data/seed.js
 exactly (same people, classes, timetable pattern, fees, deterministic sample
 scores, quizzes and announcements), so importing this gives you the same demo
-data the Node app seeds into data/db.json on first run.
+data the Node app seeds into MySQL.
 
 Run with: python3 generate_seed.py > seed_data_inserts.sql
 """
@@ -37,7 +37,7 @@ PW = {
 }
 
 emit("-- ==========================================================")
-emit("-- Seed data for the Broad Mind Private School portal")
+emit("-- Seed data for the Broad-Mind College (BMS) portal")
 emit("-- Generated to match backend/data/seed.js exactly (same demo")
 emit("-- people, classes, timetable pattern and sample scores).")
 emit("-- ==========================================================")
@@ -48,7 +48,7 @@ emit()
 # ---------- settings ----------
 emit("-- Settings (single row)")
 emit("INSERT INTO settings (id, school_name, motto, session, term, address, phone, email) VALUES")
-emit(f"  (1, {esc('Broad Mind Private School')}, {esc('Knowledge with character')}, {esc('2026/2027')}, {esc('First Term')}, {esc('12 Unity Road')}, {esc('0801 234 5678')}, {esc('info@crestview.edu')});")
+emit(f"  (1, {esc('Broad-Mind College (BMS)')}, {esc('Knowledge with character')}, {esc('2026/2027')}, {esc('First Term')}, {esc('12 Unity Road')}, {esc('0801 234 5678')}, {esc('info@broadmindcollege.edu')});")
 emit()
 
 # ---------- classes (form_teacher_id filled in later, after users exist) ----------
@@ -65,15 +65,15 @@ emit("INSERT INTO users (id, role, school_id, name, email, password, phone, gend
 
 rows = []
 # admin
-rows.append(f"(1, 'admin', 'CVC/ADM/001', {esc('Dr. Adaeze Okonkwo')}, {esc('principal@crestview.edu')}, {esc(PW['admin123'])}, {esc('0803 555 0101')}, NULL, NULL, NULL, NULL, NULL, NULL, {esc('Staff quarters, Block A')}, {esc('Principal since 2019.')}, NULL, 'active', NOW() - INTERVAL 400 DAY)")
+rows.append(f"(1, 'admin', 'BMS/ADM/001', {esc('Dr. Adaeze Okonkwo')}, {esc('principal@broadmindcollege.edu')}, {esc(PW['admin123'])}, {esc('0803 555 0101')}, NULL, NULL, NULL, NULL, NULL, NULL, {esc('Staff quarters, Block A')}, {esc('Principal since 2019.')}, NULL, 'active', NOW() - INTERVAL 400 DAY)")
 
 teachers = [
-    (2, 'Mr. Tunde Bakare', 'tunde@crestview.edu', '0803 555 0102', 'B.Sc Mathematics, PGDE'),
-    (3, 'Mrs. Ngozi Eze', 'ngozi@crestview.edu', '0803 555 0103', 'B.A English, PGDE'),
-    (4, 'Mr. Ibrahim Musa', 'ibrahim@crestview.edu', '0803 555 0104', 'B.Sc Integrated Science'),
+    (2, 'Mr. Tunde Bakare', 'tunde@broadmindcollege.edu', '0803 555 0102', 'B.Sc Mathematics, PGDE'),
+    (3, 'Mrs. Ngozi Eze', 'ngozi@broadmindcollege.edu', '0803 555 0103', 'B.A English, PGDE'),
+    (4, 'Mr. Ibrahim Musa', 'ibrahim@broadmindcollege.edu', '0803 555 0104', 'B.Sc Integrated Science'),
 ]
 for i, (tid, name, email, phone, qual) in enumerate(teachers):
-    school_id = f"CVC/TCH/00{i + 1}"
+    school_id = f"BMS/TCH/00{i + 1}"
     rows.append(f"({tid}, 'teacher', {esc(school_id)}, {esc(name)}, {esc(email)}, {esc(PW['teacher123'])}, {esc(phone)}, NULL, NULL, NULL, NULL, NULL, NULL, '', '', {esc(qual)}, 'active', NOW() - INTERVAL 300 DAY)")
 
 students = [
@@ -84,7 +84,7 @@ students = [
 birth_year = [0, 2014, 2013, 2011]
 for i, (name, gender, class_id) in enumerate(students):
     sid = 5 + i
-    school_id = f"CVC/26/{str(i + 1).zfill(3)}"
+    school_id = f"BMS/26/{str(i + 1).zfill(3)}"
     dob = f"{birth_year[class_id]}-0{(i % 9) + 1}-15"
     parent_id = 14 if name == 'Chinedu Okafor' else None
     guardian_name = f"Mr/Mrs {name.split(' ')[1]}"
@@ -97,7 +97,7 @@ for i, (name, gender, class_id) in enumerate(students):
     )
 
 # parent (id 14)
-rows.append(f"(14, 'parent', NULL, {esc('Grace Okafor')}, {esc('parent@crestview.edu')}, {esc(PW['parent123'])}, {esc('0805 555 0110')}, NULL, NULL, NULL, NULL, NULL, NULL, {esc('3 Palm Avenue')}, NULL, NULL, 'active', NOW() - INTERVAL 40 DAY)")
+rows.append(f"(14, 'parent', NULL, {esc('Grace Okafor')}, {esc('parent@broadmindcollege.edu')}, {esc(PW['parent123'])}, {esc('0805 555 0110')}, NULL, NULL, NULL, NULL, NULL, NULL, {esc('3 Palm Avenue')}, NULL, NULL, 'active', NOW() - INTERVAL 40 DAY)")
 
 emit(",\n".join("  " + r for r in rows) + ";")
 emit()
@@ -147,17 +147,17 @@ emit()
 emit("-- Sample payments")
 emit("INSERT INTO payments (id, student_id, fee_id, amount, method, status, reference, receipt_no, term, session, date) VALUES")
 payment_defs = [
-    (5, 1, 85000, 'Card', 6), (5, 2, 5000, 'Card', 6),
+    (5, 1, 85000, 'Korapay', 6), (5, 2, 5000, 'Korapay', 6),
     (6, 1, 40000, 'Bank transfer', 5),
     (7, 3, 15000, 'Bank transfer', 4),
-    (8, 1, 85000, 'Card', 3), (8, 2, 5000, 'Card', 3), (8, 3, 15000, 'Card', 3), (8, 4, 3000, 'Card', 3),
+    (8, 1, 85000, 'Korapay', 3), (8, 2, 5000, 'Korapay', 3), (8, 3, 15000, 'Korapay', 3), (8, 4, 3000, 'Korapay', 3),
     (9, 1, 60000, 'Bank transfer', 2),
-    (11, 1, 85000, 'Card', 1),
-    (12, 2, 5000, 'Card', 1),
+    (11, 1, 85000, 'Korapay', 1),
+    (12, 2, 5000, 'Korapay', 1),
 ]
 p_rows = []
 for i, (student_id, fee_id, amount, method, days) in enumerate(payment_defs, start=1):
-    ref = f"CVC-SEED{str(i).zfill(4)}"
+    ref = f"BMS-SEED{str(i).zfill(4)}"
     receipt = f"RCT-{str(i).zfill(5)}"
     p_rows.append(f"  ({i}, {student_id}, {fee_id}, {amount}.00, {esc(method)}, 'success', {esc(ref)}, {esc(receipt)}, 'First Term', '2026/2027', NOW() - INTERVAL {days} DAY)")
 emit(",\n".join(p_rows) + ";")
@@ -233,6 +233,10 @@ emit("INSERT INTO announcements (title, body, author, posted_by, date) VALUES")
 emit(f"  ({esc('Welcome back to the new session')}, {esc('Classes are in full swing. Students should be in full school uniform every day.')}, {esc('Dr. Adaeze Okonkwo')}, 1, NOW() - INTERVAL 6 DAY),")
 emit(f"  ({esc('First-term fees')}, {esc('Please complete first-term fee payments before the end of October. Receipts can be downloaded from the portal.')}, {esc('Dr. Adaeze Okonkwo')}, 1, NOW() - INTERVAL 4 DAY),")
 emit(f"  ({esc('Inter-house sports trials')}, {esc('Trials hold next week. See your sports teacher to register.')}, {esc('Dr. Adaeze Okonkwo')}, 1, NOW() - INTERVAL 1 DAY);")
+emit()
+
+emit("-- CBT collections are stored as a JSON extension")
+emit("INSERT INTO portal_extensions (id, payload) VALUES (1, JSON_OBJECT());")
 emit()
 
 emit("SET FOREIGN_KEY_CHECKS = 1;")

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Wallet } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -13,12 +14,28 @@ const TONE = { Paid: 'ok', 'Part paid': 'warn', Unpaid: 'danger' };
 export default function StudentFees() {
   const toast = useToast();
   const { data, loading, error, reload } = useFetch('/payments/my');
+  const [params, setParams] = useSearchParams();
   const [payFee, setPayFee] = useState(null);
-  const [method, setMethod] = useState('Card');
   const [amount, setAmount] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState('');
+  const reference = params.get('reference');
+
+  useEffect(() => {
+    if (!reference) return;
+    let cancelled = false;
+    api.get(`/payments/korapay/verify/${encodeURIComponent(reference)}`)
+      .then(() => {
+        if (cancelled) return;
+        toast.success('Korapay payment confirmed');
+        setParams((next) => { next.delete('reference'); return next; }, { replace: true });
+        reload();
+      })
+      .catch((err) => !cancelled && toast.error(err.message))
+      .finally(() => { cancelled = true; });
+    return () => { cancelled = true; };
+  }, [reference, reload, setParams, toast]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
@@ -26,8 +43,7 @@ export default function StudentFees() {
   function openPay(fee) {
     setPayFee(fee);
     setAmount(String(fee.balance));
-    setMethod('Card');
-    setCardNumber('');
+    setEmail('');
     setPayError('');
   }
 
@@ -36,10 +52,12 @@ export default function StudentFees() {
     setPayError('');
     setBusy(true);
     try {
-      await api.post('/payments/pay', { feeId: payFee.id, amount: Number(amount), method, cardNumber });
-      toast.success(`Payment for ${payFee.title} was successful`);
-      setPayFee(null);
-      reload();
+      const result = await api.post('/payments/korapay/initialize', {
+        feeId: payFee.id,
+        amount: Number(amount),
+        email,
+      });
+      window.location.assign(result.checkoutUrl);
     } catch (err) {
       setPayError(err.message);
     } finally {
@@ -58,6 +76,9 @@ export default function StudentFees() {
   return (
     <>
       <PageHeader title="Fees & receipts" subtitle={`${data.settings.term}, ${data.settings.session}`} />
+      {!data.paymentOptions.korapayConfigured && (
+        <div className="error-note" role="status">Online payments are not configured. Please contact the school office.</div>
+      )}
 
       <div className="summary-strip">
         <div className="summary-box"><div className="v">{money(data.totals.expected)}</div><div className="l">Expected this term</div></div>
@@ -79,7 +100,7 @@ export default function StudentFees() {
                   <td><Badge tone={TONE[fee.status]}>{fee.status}</Badge></td>
                   <td className="right">
                     {fee.balance > 0 && (
-                      <button className="btn btn-primary btn-sm" onClick={() => openPay(fee)}><Wallet size={14} />Pay</button>
+                      <button className="btn btn-primary btn-sm" onClick={() => openPay(fee)} disabled={!data.paymentOptions.korapayConfigured}><Wallet size={14} />Pay</button>
                     )}
                   </td>
                 </tr>
@@ -129,24 +150,14 @@ export default function StudentFees() {
                 <input id="amt" type="number" min="1" max={payFee.balance} className="input" value={amount} onChange={(e) => setAmount(e.target.value)} required />
               </div>
               <div className="field">
-                <label htmlFor="method">Payment method</label>
-                <select id="method" className="select" value={method} onChange={(e) => setMethod(e.target.value)}>
-                  <option>Card</option>
-                  <option>Bank transfer</option>
-                  <option>USSD</option>
-                </select>
+                <label htmlFor="payment-email">Email for Korapay receipt</label>
+                <input id="payment-email" className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
-              {method === 'Card' && (
-                <div className="field">
-                  <label htmlFor="card">Card number</label>
-                  <input id="card" className="input" placeholder="4111 1111 1111 1111" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} required />
-                </div>
-              )}
-              <p className="hint">This is a demo payment — no real money moves. A real deployment would connect a gateway like Paystack, Flutterwave or Stripe here.</p>
+              <p className="hint">You will be redirected to Korapay to complete your payment securely.</p>
               {payError && <div className="error-note" role="alert">{payError}</div>}
               <div className="form-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setPayFee(null)}>Cancel</button>
-                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Paying…' : `Pay ${money(amount || 0)}`}</button>
+                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Connecting…' : `Continue to Korapay · ${money(amount || 0)}`}</button>
               </div>
             </form>
           </div>

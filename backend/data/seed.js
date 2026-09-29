@@ -1,22 +1,23 @@
-// Creates data/db.json with sample school data.
-// Run it with:  npm run seed   (it also runs automatically the first time you start the server)
+// Builds the project's sample school dataset for the MySQL seed command.
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
-const { FILE } = require('./db');
+const path = require('path');
 
-function seed() {
+const FILE = path.join(__dirname, 'db.json');
+
+function seed({ writeFile = true } = {}) {
   const hash = (plain) => bcrypt.hashSync(plain, 8);
   const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
   const dateFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
   const settings = {
-    schoolName: 'Broad Mind Private School',
+    schoolName: 'Broad-Mind College (BMS)',
     motto: 'Knowledge with character',
     session: '2026/2027',
     term: 'First Term',
     address: '12 Unity Road',
     phone: '0801 234 5678',
-    email: 'info@crestview.edu',
+    email: 'info@broadmindcollege.edu',
   };
 
   const subjects = [
@@ -32,22 +33,22 @@ function seed() {
   const users = [];
 
   users.push({
-    id: 1, role: 'admin', schoolId: 'CVC/ADM/001', name: 'Dr. Adaeze Okonkwo',
-    email: 'principal@crestview.edu', password: hash('admin123'), phone: '0803 555 0101',
+    id: 1, role: 'admin', schoolId: 'BMS/ADM/001', name: 'Dr. Adaeze Okonkwo',
+    email: 'principal@broadmindcollege.edu', password: hash('admin123'), phone: '0803 555 0101',
     address: 'Staff quarters, Block A', bio: 'Principal since 2019.', status: 'active', createdAt: daysAgo(400),
   });
 
   const teachers = [
-    { id: 2, name: 'Mr. Tunde Bakare', email: 'tunde@crestview.edu', phone: '0803 555 0102',
+    { id: 2, name: 'Mr. Tunde Bakare', email: 'tunde@broadmindcollege.edu', phone: '0803 555 0102',
       qualification: 'B.Sc Mathematics, PGDE', subjects: ['Mathematics', 'Computer Studies'] },
-    { id: 3, name: 'Mrs. Ngozi Eze', email: 'ngozi@crestview.edu', phone: '0803 555 0103',
+    { id: 3, name: 'Mrs. Ngozi Eze', email: 'ngozi@broadmindcollege.edu', phone: '0803 555 0103',
       qualification: 'B.A English, PGDE', subjects: ['English Language', 'Civic Education'] },
-    { id: 4, name: 'Mr. Ibrahim Musa', email: 'ibrahim@crestview.edu', phone: '0803 555 0104',
+    { id: 4, name: 'Mr. Ibrahim Musa', email: 'ibrahim@broadmindcollege.edu', phone: '0803 555 0104',
       qualification: 'B.Sc Integrated Science', subjects: ['Basic Science', 'Social Studies'] },
   ];
   teachers.forEach((t, i) => {
     users.push({
-      ...t, role: 'teacher', schoolId: `CVC/TCH/00${i + 1}`, password: hash('teacher123'),
+      ...t, role: 'teacher', schoolId: `BMS/TCH/00${i + 1}`, password: hash('teacher123'),
       address: '', bio: '', status: 'active', createdAt: daysAgo(300),
     });
   });
@@ -60,7 +61,7 @@ function seed() {
   const birthYear = [0, 2014, 2013, 2011];
   studentList.forEach(([name, gender, classId], i) => {
     users.push({
-      id: 5 + i, role: 'student', schoolId: `CVC/26/${String(i + 1).padStart(3, '0')}`,
+      id: 5 + i, role: 'student', schoolId: `BMS/26/${String(i + 1).padStart(3, '0')}`,
       name, gender, email: '', password: hash('student123'), phone: '',
       dob: `${birthYear[classId]}-0${(i % 9) + 1}-15`, classId,
       parentId: name === 'Chinedu Okafor' ? 14 : null,
@@ -71,7 +72,7 @@ function seed() {
 
   // A sample parent account, linked to Chinedu Okafor above, so the parent portal has data to show
   users.push({
-    id: 14, role: 'parent', name: 'Grace Okafor', email: 'parent@crestview.edu',
+    id: 14, role: 'parent', name: 'Grace Okafor', email: 'parent@broadmindcollege.edu',
     password: hash('parent123'), phone: '0805 555 0110', address: '3 Palm Avenue',
     bio: '', status: 'active', createdAt: daysAgo(40),
   });
@@ -111,22 +112,22 @@ function seed() {
     const id = payments.length + 1;
     payments.push({
       id, studentId, feeId, amount, method, status: 'success',
-      reference: `CVC-SEED${String(id).padStart(4, '0')}`,
+      reference: `BMS-SEED${String(id).padStart(4, '0')}`,
       receiptNo: `RCT-${String(id).padStart(5, '0')}`,
       term: settings.term, session: settings.session, date: daysAgo(days),
     });
   };
-  addPayment(5, 1, 85000, 'Card', 6);
-  addPayment(5, 2, 5000, 'Card', 6);
+  addPayment(5, 1, 85000, 'Korapay', 6);
+  addPayment(5, 2, 5000, 'Korapay', 6);
   addPayment(6, 1, 40000, 'Bank transfer', 5);
   addPayment(7, 3, 15000, 'Bank transfer', 4);
-  addPayment(8, 1, 85000, 'Card', 3);
-  addPayment(8, 2, 5000, 'Card', 3);
-  addPayment(8, 3, 15000, 'Card', 3);
-  addPayment(8, 4, 3000, 'Card', 3);
+  addPayment(8, 1, 85000, 'Korapay', 3);
+  addPayment(8, 2, 5000, 'Korapay', 3);
+  addPayment(8, 3, 15000, 'Korapay', 3);
+  addPayment(8, 4, 3000, 'Korapay', 3);
   addPayment(9, 1, 60000, 'Bank transfer', 2);
-  addPayment(11, 1, 85000, 'Card', 1);
-  addPayment(12, 2, 5000, 'Card', 1);
+  addPayment(11, 1, 85000, 'Korapay', 1);
+  addPayment(12, 2, 5000, 'Korapay', 1);
 
   // ---------- Results (last term) ----------
   let seedNum = 11;
@@ -194,12 +195,9 @@ function seed() {
   ];
 
   const data = { settings, users, classes, fees, payments, results, quizzes, submissions, announcements, notifications: [] };
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
-  try {
-    require('./seed_cbt');
-  } catch (e) {
-    console.error('CBT seed error:', e);
-  }
+  require('./seed_cbt')(data);
+  if (writeFile) fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  return data;
 }
 
 module.exports = seed;

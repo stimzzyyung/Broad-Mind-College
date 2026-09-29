@@ -1,17 +1,17 @@
 -- ==========================================================
--- Broad Mind Private School portal — MySQL schema
--- Mirrors the data currently kept in backend/data/db.json
--- (users, classes, fees, payments, results, the LMS and
--- notifications), normalised into proper tables.
+-- Broad-Mind College (BMS) portal — MySQL schema
+-- Stores the portal's users, classes, fees, payments, results,
+-- LMS and notifications in normalized tables. CBT-only collections
+-- are preserved in portal_extensions.
 --
 -- Import order: this file first, then seed_data.sql.
 -- Works in phpMyAdmin: open phpMyAdmin -> Import -> choose this
 -- file -> Go, then repeat for seed_data.sql.
 -- ==========================================================
 
-CREATE DATABASE IF NOT EXISTS crestview_portal
+CREATE DATABASE IF NOT EXISTS broadmind_college
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE crestview_portal;
+USE broadmind_college;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -191,8 +191,8 @@ CREATE TABLE quiz_questions (
   question     TEXT NOT NULL,
   option_a     VARCHAR(255) NOT NULL,
   option_b     VARCHAR(255) NOT NULL,
-  option_c     VARCHAR(255) NOT NULL,
-  option_d     VARCHAR(255) NOT NULL,
+  option_c     VARCHAR(255) NULL,
+  option_d     VARCHAR(255) NULL,
   answer_index TINYINT UNSIGNED NOT NULL,      -- 0=A, 1=B, 2=C, 3=D
   CONSTRAINT fk_qq_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
 );
@@ -240,6 +240,15 @@ CREATE TABLE notifications (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_notif_user_unread (user_id, is_read)
+);
+
+-- Additional collections used by the computer-based testing module.
+-- Keeping extension data as JSON lets CBT evolve without losing fields
+-- when its application data is loaded and saved through the API.
+DROP TABLE IF EXISTS portal_extensions;
+CREATE TABLE portal_extensions (
+  id      TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+  payload JSON NOT NULL
 );
 
 SET FOREIGN_KEY_CHECKS = 1;

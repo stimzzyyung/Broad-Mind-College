@@ -1,10 +1,6 @@
-const fs = require('fs');
-const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const dbFile = path.join(__dirname, 'db.json');
-const data = JSON.parse(fs.readFileSync(dbFile, 'utf8'));
-
+function seedCbt(data) {
 const hash = (plain) => bcrypt.hashSync(plain, 8);
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const dateFromNow = (days, time = '08:00') => {
@@ -102,14 +98,14 @@ data.classes = allClassesConfig.map((c, i) => {
 
 // 7. Add extra sample students for Primary, JSS3, SS2, SS3
 const extraStudents = [
-  { id: 15, name: 'Kamsi Adeleke', gender: 'Male', classId: 4, schoolId: 'CVC/26/010' }, // Primary 1A
-  { id: 16, name: 'Zainab Danjuma', gender: 'Female', classId: 5, schoolId: 'CVC/26/011' }, // Primary 2A
-  { id: 17, name: 'David Bassey', gender: 'Male', classId: 6, schoolId: 'CVC/26/012' }, // Primary 3A
-  { id: 18, name: 'Hadiza Sanusi', gender: 'Female', classId: 7, schoolId: 'CVC/26/013' }, // Primary 4A
-  { id: 19, name: 'Somtochukwu Eze', gender: 'Male', classId: 8, schoolId: 'CVC/26/014' }, // Primary 5A
-  { id: 20, name: 'Amina Gambo', gender: 'Female', classId: 9, schoolId: 'CVC/26/015' }, // JSS 3A
-  { id: 21, name: 'Oluwaseun Balogun', gender: 'Male', classId: 10, schoolId: 'CVC/26/016' }, // SS 2A
-  { id: 22, name: 'Miracle Okoro', gender: 'Female', classId: 11, schoolId: 'CVC/26/017' }, // SS 3A
+  { id: 15, name: 'Kamsi Adeleke', gender: 'Male', classId: 4, schoolId: 'BMS/26/010' }, // Primary 1A
+  { id: 16, name: 'Zainab Danjuma', gender: 'Female', classId: 5, schoolId: 'BMS/26/011' }, // Primary 2A
+  { id: 17, name: 'David Bassey', gender: 'Male', classId: 6, schoolId: 'BMS/26/012' }, // Primary 3A
+  { id: 18, name: 'Hadiza Sanusi', gender: 'Female', classId: 7, schoolId: 'BMS/26/013' }, // Primary 4A
+  { id: 19, name: 'Somtochukwu Eze', gender: 'Male', classId: 8, schoolId: 'BMS/26/014' }, // Primary 5A
+  { id: 20, name: 'Amina Gambo', gender: 'Female', classId: 9, schoolId: 'BMS/26/015' }, // JSS 3A
+  { id: 21, name: 'Oluwaseun Balogun', gender: 'Male', classId: 10, schoolId: 'BMS/26/016' }, // SS 2A
+  { id: 22, name: 'Miracle Okoro', gender: 'Female', classId: 11, schoolId: 'BMS/26/017' }, // SS 3A
 ];
 
 extraStudents.forEach((stu) => {
@@ -880,5 +876,7 @@ data.cbt_positions = [
   },
 ];
 
-fs.writeFileSync(dbFile, JSON.stringify(data, null, 2));
-console.log('Successfully seeded advanced CBT collections into db.json!');
+return data;
+}
+
+module.exports = seedCbt;

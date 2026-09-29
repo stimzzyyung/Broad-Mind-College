@@ -1,14 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const db = require('./data/db');
-
-// First run? Create the database file with sample data.
-if (!fs.existsSync(db.FILE)) {
-  require('./data/seed')();
-  console.log('Created data/db.json with sample data');
-}
 
 const app = express();
 
@@ -37,6 +30,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use('/api', db.requestMiddleware);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
@@ -65,4 +59,12 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`School portal API running on http://localhost:${PORT}`));
+
+db.initialize()
+  .then(() => {
+    app.listen(PORT, () => console.log(`School portal API running on http://localhost:${PORT}`));
+  })
+  .catch((error) => {
+    console.error('Unable to connect to the school MySQL database:', error.message);
+    process.exitCode = 1;
+  });

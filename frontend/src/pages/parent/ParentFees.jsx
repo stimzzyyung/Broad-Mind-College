@@ -16,27 +16,27 @@ export default function ParentFees() {
   const { data, loading, error, reload } = useFetch('/payments/children');
   const [params, setParams] = useSearchParams();
   const [payFee, setPayFee] = useState(null); // { child, fee }
-  const [method, setMethod] = useState('Paystack');
+  const [method, setMethod] = useState('Korapay');
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState('');
   const [transferReference, setTransferReference] = useState('');
-  const paystackReference = params.get('reference') || params.get('trxref');
+  const korapayReference = params.get('reference');
 
   useEffect(() => {
-    if (!paystackReference) return;
+    if (!korapayReference) return;
     let cancelled = false;
-    api.get(`/payments/paystack/verify/${encodeURIComponent(paystackReference)}`)
+    api.get(`/payments/korapay/verify/${encodeURIComponent(korapayReference)}`)
       .then(() => {
         if (cancelled) return;
-        toast.success('Paystack payment confirmed');
-        setParams((next) => { next.delete('reference'); next.delete('trxref'); return next; }, { replace: true });
+        toast.success('Korapay payment confirmed');
+        setParams((next) => { next.delete('reference'); return next; }, { replace: true });
         reload();
       })
       .catch((err) => !cancelled && toast.error(err.message))
       .finally(() => { cancelled = true; });
     return () => { cancelled = true; };
-  }, [paystackReference, reload, setParams, toast]);
+  }, [korapayReference, reload, setParams, toast]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
@@ -44,7 +44,7 @@ export default function ParentFees() {
   function openPay(child, fee) {
     setPayFee({ child, fee });
     setAmount(String(fee.balance));
-    setMethod(data.paymentOptions.paystackConfigured ? 'Paystack' : 'Bank transfer');
+    setMethod(data.paymentOptions.korapayConfigured ? 'Korapay' : 'Bank transfer');
     setTransferReference('');
     setPayError('');
   }
@@ -54,14 +54,13 @@ export default function ParentFees() {
     setPayError('');
     setBusy(true);
     try {
-      if (method === 'Paystack') {
-        const result = await api.post('/payments/paystack/initialize', {
+      if (method === 'Korapay') {
+        const result = await api.post('/payments/korapay/initialize', {
           studentId: payFee.child.id,
           feeId: payFee.fee.id,
           amount: Number(amount),
-          callbackUrl: `${window.location.origin}/parent/fees`,
         });
-        window.location.assign(result.authorizationUrl);
+        window.location.assign(result.checkoutUrl);
         return;
       }
 
@@ -186,11 +185,11 @@ export default function ParentFees() {
               <div className="field">
                 <label htmlFor="method">Payment method</label>
                 <select id="method" className="select" value={method} onChange={(e) => setMethod(e.target.value)}>
-                  {data.paymentOptions.paystackConfigured && <option>Paystack</option>}
+                  {data.paymentOptions.korapayConfigured && <option>Korapay</option>}
                   <option>Bank transfer</option>
                 </select>
               </div>
-              {method === 'Paystack' && <p className="hint">You will be redirected to Paystack to pay securely with your preferred method.</p>}
+              {method === 'Korapay' && <p className="hint">You will be redirected to Korapay to pay securely with your preferred method.</p>}
               {method === 'Bank transfer' && (
                 <>
                   <div className="success-panel">
@@ -210,7 +209,7 @@ export default function ParentFees() {
               {payError && <div className="error-note" role="alert">{payError}</div>}
               <div className="form-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setPayFee(null)}>Cancel</button>
-                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Processing…' : method === 'Paystack' ? 'Continue to Paystack' : 'Submit transfer'}</button>
+                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Processing…' : method === 'Korapay' ? 'Continue to Korapay' : 'Submit transfer'}</button>
               </div>
             </form>
           </div>

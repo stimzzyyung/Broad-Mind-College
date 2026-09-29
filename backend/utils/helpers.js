@@ -1,6 +1,6 @@
 // Small helper functions used by several routes.
 
-const SCHOOL_CODE = 'CVC';
+const SCHOOL_CODE = 'BMS';
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

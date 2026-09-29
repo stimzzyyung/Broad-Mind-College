@@ -6,10 +6,10 @@ import { SCHOOL } from '../config/school.js';
 
 // One tab per portal. "demo" fills in the sample accounts from the backend seed data.
 const PORTALS = [
-  { key: 'student', label: 'Student', icon: GraduationCap, idLabel: 'School ID', placeholder: 'CVC/26/001', demo: ['CVC/26/001', 'student123'] },
-  { key: 'parent', label: 'Parent', icon: Users, idLabel: 'Email', placeholder: 'you@example.com', demo: ['parent@crestview.edu', 'parent123'] },
-  { key: 'teacher', label: 'Teacher', icon: Presentation, idLabel: 'School email', placeholder: 'you@crestview.edu', demo: ['tunde@crestview.edu', 'teacher123'] },
-  { key: 'admin', label: 'Principal', icon: ShieldCheck, idLabel: 'School email', placeholder: 'principal@crestview.edu', demo: ['principal@crestview.edu', 'admin123'] },
+  { key: 'student', label: 'Student', icon: GraduationCap, idLabel: 'School ID', placeholder: 'BMS/26/001', demo: ['BMS/26/001', 'student123'] },
+  { key: 'parent', label: 'Parent', icon: Users, idLabel: 'Email', placeholder: 'parent@broadmindcollege.edu', demo: ['parent@broadmindcollege.edu', 'parent123'] },
+  { key: 'teacher', label: 'Teacher', icon: Presentation, idLabel: 'School email', placeholder: 'you@broadmindcollege.edu', demo: ['tunde@broadmindcollege.edu', 'teacher123'] },
+  { key: 'admin', label: 'Principal', icon: ShieldCheck, idLabel: 'School email', placeholder: 'principal@broadmindcollege.edu', demo: ['principal@broadmindcollege.edu', 'admin123'] },
 ];
 
 // Decorative chalk timetable on the left side

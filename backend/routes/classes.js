@@ -164,6 +164,12 @@ router.delete('/:id', requireRole('admin'), (req, res) => {
     return res.status(400).json({ message: 'Move the students out of this class before deleting it' });
   }
   data.classes = data.classes.filter((c) => c.id !== id);
+  const removedQuizIds = data.quizzes
+    .filter((quiz) => quiz.classId === id)
+    .map((quiz) => quiz.id);
+  data.quizzes = data.quizzes.filter((quiz) => quiz.classId !== id);
+  data.submissions = data.submissions.filter((submission) => !removedQuizIds.includes(submission.quizId));
+  data.results = data.results.filter((result) => result.classId !== id);
   db.write(data);
   res.json({ message: 'Class deleted' });
 });
