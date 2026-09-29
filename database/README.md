@@ -1,80 +1,54 @@
-# Broad Mind Private School portal — MySQL database
+# Broad Mind Private School MySQL schema
 
-Two files here, meant to be imported in order:
+`schema.sql` creates the `broad-mind-private-school` database and its portal
+tables. It initializes standard school-section and CBT lookup options, but
+does not insert demo users, payments, exams, results, or drop existing tables.
+The schema includes users, classes, fees, payments, results, LMS, CBT,
+proctoring metadata, notifications, and live-class signaling.
 
-1. `schema.sql` — creates the `crestview_portal` database and all 13 tables
-   (users, classes, fees, payments, results, the LMS tables, announcements,
-   notifications, and so on), with the foreign keys between them.
-2. `seed_data.sql` — fills those tables with the same demo data the app's
-   `npm run seed` creates: 1 principal, 3 teachers, 9 students, 1 parent,
-   3 classes with timetables, 4 fee items, sample payments, one term of
-   results, 3 quizzes/tests, and 3 notice-board posts.
+## Upload with phpMyAdmin
 
-## Importing in phpMyAdmin
+1. Select **Import** in phpMyAdmin.
+2. Choose `schema.sql` and click **Go**.
+3. Confirm that `broad-mind-private-school` and its 30 tables were created.
+4. Import your real school records and current school settings into the tables.
 
-1. Open phpMyAdmin.
-2. Click **Import** in the top menu (you don't need to create the database
-   first — `schema.sql` does that with `CREATE DATABASE IF NOT EXISTS`).
-3. Choose `schema.sql`, leave the format as SQL, click **Go**.
-4. Once that finishes, click **Import** again, choose `seed_data.sql`, and
-   click **Go**.
-5. Open the `crestview_portal` database in the left sidebar — you should see
-   13 tables, with `users` holding 14 rows, `classes` holding 3, and so on.
+You can also run it from a terminal:
 
-If you'd rather use the command line instead of the phpMyAdmin UI:
-
-```
-mysql -u root -p < schema.sql
-mysql -u root -p < seed_data.sql
+```sh
+mysql -u YOUR_MYSQL_USER -p < schema.sql
 ```
 
-## Demo logins
+The script uses `CREATE TABLE IF NOT EXISTS`; it will not erase rows from
+existing tables. It will not automatically alter a table that already exists
+with a different structure. Back up the database before applying future
+schema changes.
 
-The seeded passwords are real bcrypt hashes for these plain-text passwords,
-matching what the Node app's own seed script generates:
+## Connect the backend
 
-| Role      | Login              | Password    |
-|-----------|--------------------|-------------|
-| Principal | principal@crestview.edu | admin123    |
-| Teacher   | tunde@crestview.edu     | teacher123  |
-| Student   | CVC/26/001              | student123  |
-| Parent    | parent@crestview.edu    | parent123   |
+From the `backend` directory, copy `.env.example` to `.env`, then set the
+MySQL host, port, username, password, and database name for your server:
 
-## About the schema
+```powershell
+Copy-Item .env.example .env
+```
 
-It mirrors the JSON shape the app currently keeps in `backend/data/db.json`,
-just normalised into tables:
+Set `DB_NAME=broad-mind-private-school`. Keep the real password in `.env`, not
+in source control. Then start the API with `npm start`. It checks that MySQL
+is reachable and that all required tables exist before listening. Check
+`/api/health` for database readiness.
 
-- `settings` — one row, the school's name/motto/current term.
-- `classes` / `class_subjects` / `timetable_slots` — a class, the
-  subject-teacher pairing for it, and its weekly timetable.
-- `users` — every person who can log in (principal, teachers, students,
-  parents), distinguished by the `role` column. A student's `class_id`
-  points at `classes`, and `parent_id` points at the parent's own row in
-  this same table.
-- `fees` / `payments` — fee items for a term, and payments made towards
-  them.
-- `results` — one row per student, per subject, per term. Grades (A1, B2,
-  C4, ...) aren't stored; they're calculated from the score whenever a
-  result is shown, exactly like the app already does, so the grading scale
-  can change later without rewriting old rows.
-- `quizzes` / `quiz_questions` / `submissions` — the LMS.
-- `announcements` — the notice board.
-- `notifications` — the bell-icon notifications, one row per person per
-  notification.
+The API uses the records stored in these MySQL tables. It does not create a
+default administrator, school settings, or sample accounts; import your real
+users and the current `settings` row before expecting portal logins and
+term-specific pages to work. The imported schema and existing data must match
+the columns in `schema.sql`; `IF NOT EXISTS` does not upgrade older tables.
 
-## Important: this is the database, not yet the app's data source
+## Important
 
-Right now the Node/Express backend still reads and writes
-`backend/data/db.json` — it does **not** talk to this MySQL database. This
-SQL gives you a real, correctly-structured database you can browse, query
-and build reports against in phpMyAdmin today.
+No demo user, password, payment, result, or assessment data is included.
+Only standard lookup options are initialized by the schema.
 
-Connecting the running app to it instead of the JSON file is a separate,
-bigger job: every route file (`backend/routes/*.js`) currently reads the
-whole `db.json` into memory and filters it with plain JavaScript array
-methods; switching to MySQL means rewriting `backend/data/db.js` to open a
-real connection (with a driver such as `mysql2`) and rewriting each route to
-run SQL queries instead. I can do that next if you'd like the live app
-running on this database — just say the word and let me know your MySQL
-host/port/username so I can wire up the connection details.
+Exam video files are stored outside MySQL. The schema stores only recording
+metadata; configure `PROCTORING_DIR` to a persistent storage path on the
+backend server.

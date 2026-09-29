@@ -2,23 +2,19 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, GraduationCap, Presentation, ShieldCheck, Users, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { SCHOOL } from '../config/school.js';
+import useFetch from '../hooks/useFetch.js';
 
-// One tab per portal. "demo" fills in the sample accounts from the backend seed data.
 const PORTALS = [
-  { key: 'student', label: 'Student', icon: GraduationCap, idLabel: 'School ID', placeholder: 'CVC/26/001', demo: ['CVC/26/001', 'student123'] },
-  { key: 'parent', label: 'Parent', icon: Users, idLabel: 'Email', placeholder: 'you@example.com', demo: ['parent@crestview.edu', 'parent123'] },
-  { key: 'teacher', label: 'Teacher', icon: Presentation, idLabel: 'School email', placeholder: 'you@crestview.edu', demo: ['tunde@crestview.edu', 'teacher123'] },
-  { key: 'admin', label: 'Principal', icon: ShieldCheck, idLabel: 'School email', placeholder: 'principal@crestview.edu', demo: ['principal@crestview.edu', 'admin123'] },
+  { key: 'student', label: 'Student', icon: GraduationCap, idLabel: 'School ID' },
+  { key: 'parent', label: 'Parent', icon: Users, idLabel: 'Email' },
+  { key: 'teacher', label: 'Teacher', icon: Presentation, idLabel: 'School email' },
+  { key: 'admin', label: 'Principal', icon: ShieldCheck, idLabel: 'School email' },
 ];
-
-// Decorative chalk timetable on the left side
-const CHALK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-const CHALK_SUBJECTS = ['Maths', 'English', 'Science', 'Civics', 'ICT', 'Social'];
 
 export default function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
+  const { data: schoolSettings } = useFetch('/auth/settings');
   const [role, setRole] = useState('student');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +26,11 @@ export default function Login() {
   if (user) return <Navigate to={`/${user.role}`} replace />;
 
   const portal = PORTALS.find((p) => p.key === role);
+  const identifierPlaceholder = role === 'student'
+    ? 'Enter your school ID'
+    : schoolSettings?.emailDomain
+      ? `${role === 'admin' ? 'principal' : 'you'}@${schoolSettings.emailDomain}`
+      : 'Enter your school email';
 
   function pickRole(key) {
     setRole(key);
@@ -56,24 +57,9 @@ export default function Login() {
     <div className="login">
       <section className="login-board" aria-hidden="true">
         <div>
-          <div className="crest">{SCHOOL.name[0]}</div>
-          <h1>{SCHOOL.name}</h1>
-          <div className="motto">{SCHOOL.motto}</div>
-        </div>
-
-        <div className="chalk-table">
-          <div className="chalk-row chalk-head">
-            <div />
-            {CHALK_DAYS.map((d) => <div key={d}>{d}</div>)}
-          </div>
-          {[0, 1, 2, 3].map((row) => (
-            <div className="chalk-row" key={row}>
-              <div>{row + 1}</div>
-              {CHALK_DAYS.map((d, col) => (
-                <div key={d}>{CHALK_SUBJECTS[(row + col * 2) % CHALK_SUBJECTS.length]}</div>
-              ))}
-            </div>
-          ))}
+          <div className="crest">{schoolSettings?.schoolName?.[0] || ''}</div>
+          <h1>{schoolSettings?.schoolName || ''}</h1>
+          <div className="motto">{schoolSettings?.motto || ''}</div>
         </div>
       </section>
 
@@ -103,7 +89,7 @@ export default function Login() {
               <label htmlFor="identifier">{portal.idLabel}</label>
               <input
                 id="identifier" className="input" value={identifier} autoComplete="username"
-                placeholder={portal.placeholder} onChange={(e) => setIdentifier(e.target.value)} required
+                placeholder={identifierPlaceholder} onChange={(e) => setIdentifier(e.target.value)} required
               />
             </div>
 
@@ -132,19 +118,6 @@ export default function Login() {
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
-
-          <div className="demo-box">
-            <div className="strong">Trying the demo?</div>
-            <p className="muted small" style={{ margin: '4px 0 10px' }}>
-              Fill in a sample {portal.label.toLowerCase()} account.
-            </p>
-            <button
-              type="button" className="btn btn-outline btn-sm"
-              onClick={() => { setIdentifier(portal.demo[0]); setPassword(portal.demo[1]); }}
-            >
-              Use sample {portal.label.toLowerCase()} login
-            </button>
-          </div>
 
           {role === 'parent' && (
             <p className="muted small" style={{ marginTop: 18, textAlign: 'center' }}>

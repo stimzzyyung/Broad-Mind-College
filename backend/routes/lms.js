@@ -1,243 +1,286 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const db = require('../data/db');
+const { pool } = require('../data/mysql');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { notifyUsers, notifyUser } = require('../data/notify');
 
 const router = express.Router();
 router.use(requireAuth);
 
 const today = () => new Date().toISOString().slice(0, 10);
+const parseJson = (value, fallback) => (typeof value === 'string' ? JSON.parse(value) : value) || fallback;
 
-// A short version of a quiz for lists (no questions inside)
-function summarise(data, quiz, user) {
-  const cls = data.classes.find((c) => c.id === quiz.classId);
-  const teacher = data.users.find((u) => u.id === quiz.teacherId);
-  const submissions = data.submissions.filter((s) => s.quizId === quiz.id);
-  const averagePercent = submissions.length
-    ? Math.round(submissions.reduce((sum, s) => sum + (s.score / s.total) * 100, 0) / submissions.length)
+async function loadQuiz(id) {
+  const [quizRows] = await pool.execute(
+    'SELECT q.*, c.name AS class_name, u.name AS teacher_name FROM quizzes q LEFT JOIN classes c ON c.id = q.class_id LEFT JOIN users u ON u.id = q.teacher_id WHERE q.id = ? LIMIT 1',
+    [id]
+  );
+  const row = quizRows[0];
+  if (!row) return null;
+  const [[questionRows], [submissionRows]] = await Promise.all([
+    pool.execute('SELECT id, question, option_a, option_b, option_c, option_d, answer_index FROM quiz_questions WHERE quiz_id = ? ORDER BY id', [id]),
+    pool.execute('SELECT id, quiz_id, student_id, answers, score, total, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY submitted_at', [id]),
+  ]);
+  return {
+    id: Number(row.id), title: row.title, subject: row.subject,
+    classId: Number(row.class_id), className: row.class_name || '',
+    teacherId: Number(row.teacher_id), teacherName: row.teacher_name || 'Unknown',
+    type: row.type, durationMins: Number(row.duration_mins),
+    dueDate: row.due_date || '', createdAt: row.created_at,
+    questions: questionRows.map((question) => ({
+      id: Number(question.id), question: question.question,
+      options: [question.option_a, question.option_b, question.option_c, question.option_d].filter(Boolean),
+      answerIndex: Number(question.answer_index),
+    })),
+    submissions: submissionRows.map((submission) => ({
+      id: Number(submission.id), quizId: Number(submission.quiz_id), studentId: Number(submission.student_id),
+      answers: parseJson(submission.answers, []), score: Number(submission.score),
+      total: Number(submission.total), submittedAt: submission.submitted_at,
+    })),
+  };
+}
+
+function summarise(quiz, user) {
+  const averagePercent = quiz.submissions.length
+    ? Math.round(quiz.submissions.reduce((sum, submission) => sum + (submission.score / submission.total) * 100, 0) / quiz.submissions.length)
     : null;
-
   const item = {
     id: quiz.id, title: quiz.title, subject: quiz.subject, type: quiz.type,
-    classId: quiz.classId, className: cls ? cls.name : '',
-    teacherName: teacher ? teacher.name : 'Unknown',
+    classId: quiz.classId, className: quiz.className, teacherName: quiz.teacherName,
     durationMins: quiz.durationMins, dueDate: quiz.dueDate,
     questionCount: quiz.questions.length, createdAt: quiz.createdAt,
-    submissionCount: submissions.length, averagePercent,
+    submissionCount: quiz.submissions.length, averagePercent,
   };
-
   if (user.role === 'student') {
-    const mine = submissions.find((s) => s.studentId === user.id);
+    const mine = quiz.submissions.find((submission) => submission.studentId === Number(user.id));
     item.mySubmission = mine ? { score: mine.score, total: mine.total, submittedAt: mine.submittedAt } : null;
-    item.closed = !mine && !!quiz.dueDate && quiz.dueDate < today();
+    item.closed = !mine && Boolean(quiz.dueDate) && String(quiz.dueDate).slice(0, 10) < today();
   }
   return item;
 }
 
-// GET /api/lms/quizzes  – admin: all, teacher: mine, student: for my class
-router.get('/quizzes', (req, res) => {
-  const data = db.read();
-  let list = data.quizzes;
-
-  if (req.user.role === 'teacher') list = list.filter((q) => q.teacherId === req.user.id);
-  if (req.user.role === 'student') {
-    const me = data.users.find((u) => u.id === req.user.id);
-    list = list.filter((q) => q.classId === me.classId);
-  }
-
-  res.json(
-    list
-      .map((q) => summarise(data, q, req.user))
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+async function notify(connection, userId, title, body, type, link) {
+  await connection.execute(
+    'INSERT INTO notifications (user_id, title, body, type, link) VALUES (?, ?, ?, ?, ?)',
+    [userId, title, body, type, link]
   );
+}
+
+router.get('/quizzes', async (req, res, next) => {
+  try {
+    let query = 'SELECT id FROM quizzes';
+    const values = [];
+    if (req.user.role === 'teacher') {
+      query += ' WHERE teacher_id = ?';
+      values.push(req.user.id);
+    } else if (req.user.role === 'student') {
+      query += ' WHERE class_id = (SELECT class_id FROM users WHERE id = ? AND role = ?)';
+      values.push(req.user.id, 'student');
+    }
+    query += ' ORDER BY created_at DESC';
+    const [rows] = await pool.execute(query, values);
+    const quizzes = await Promise.all(rows.map((row) => loadQuiz(Number(row.id))));
+    res.json(quizzes.filter(Boolean).map((quiz) => summarise(quiz, req.user)));
+  } catch (err) {
+    next(err);
+  }
 });
 
-// POST /api/lms/quizzes  – a teacher creates a quiz or test
-router.post('/quizzes', requireRole('teacher'), (req, res) => {
+router.post('/quizzes', requireRole('teacher'), async (req, res, next) => {
   const { title, subject, classId, type, durationMins, dueDate, questions } = req.body;
   if (!title || !subject || !classId || !Array.isArray(questions) || questions.length === 0) {
     return res.status(400).json({ message: 'Add a title, subject, class and at least one question' });
   }
-
-  const data = db.read();
-  const cls = data.classes.find((c) => c.id === Number(classId));
-  if (!cls) return res.status(400).json({ message: 'Choose a valid class' });
-  const sub = cls.subjects.find((s) => s.name === subject);
-  if (!sub || sub.teacherId !== req.user.id) {
-    return res.status(403).json({ message: 'You can only create quizzes for subjects you teach' });
-  }
-
-  // Each question needs text, at least two filled options, and one correct answer
   const cleaned = [];
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const options = (q.options || []).map((o) => String(o).trim());
-    const answerIndex = Number(q.answerIndex);
-    if (!q.question || !q.question.trim() || options.some((o) => !o) || options.length < 2 || !options[answerIndex]) {
-      return res.status(400).json({ message: `Question ${i + 1} is incomplete. Fill every option and mark the correct one.` });
+  for (let index = 0; index < questions.length; index += 1) {
+    const item = questions[index];
+    const options = (item.options || []).map((option) => String(option).trim());
+    const answerIndex = Number(item.answerIndex);
+    if (!item.question || !item.question.trim() || options.length < 2 || options.length > 4 || options.some((option) => !option) || !options[answerIndex]) {
+      return res.status(400).json({ message: `Question ${index + 1} is incomplete. Fill every option and mark the correct one.` });
     }
-    cleaned.push({ question: q.question.trim(), options, answerIndex });
+    cleaned.push({ question: item.question.trim(), options, answerIndex });
   }
 
-  const quiz = {
-    id: db.nextId(data.quizzes),
-    title: title.trim(),
-    subject,
-    classId: cls.id,
-    teacherId: req.user.id,
-    type: type === 'Test' ? 'Test' : 'Quiz',
-    durationMins: Number(durationMins) || 15,
-    dueDate: dueDate || '',
-    createdAt: new Date().toISOString(),
-    questions: cleaned,
-  };
-  data.quizzes.push(quiz);
-
-  const classmates = data.users.filter((u) => u.role === 'student' && u.classId === cls.id).map((u) => u.id);
-  notifyUsers(data, classmates, {
-    title: `New ${quiz.type.toLowerCase()}: ${quiz.title}`,
-    body: `${quiz.subject} · ${quiz.questions.length} question${quiz.questions.length === 1 ? '' : 's'}${quiz.dueDate ? ` · due ${quiz.dueDate}` : ''}`,
-    type: 'quiz',
-    link: `/lms/${quiz.id}`,
-  });
-
-  db.write(data);
-  res.status(201).json(summarise(data, quiz, req.user));
-});
-
-// GET /api/lms/quizzes/:id
-// Students get the questions WITHOUT answers. After submitting they get a full review.
-router.get('/quizzes/:id', (req, res) => {
-  const data = db.read();
-  const quiz = data.quizzes.find((q) => q.id === Number(req.params.id));
-  if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
-
-  if (req.user.role === 'student') {
-    const me = data.users.find((u) => u.id === req.user.id);
-    if (me.classId !== quiz.classId) return res.status(403).json({ message: 'This quiz is not for your class' });
-
-    const submission = data.submissions.find((s) => s.quizId === quiz.id && s.studentId === me.id);
-    if (submission) return res.json({ ...summarise(data, quiz, req.user), questions: quiz.questions, submission });
-
-    if (quiz.dueDate && quiz.dueDate < today()) {
-      return res.status(403).json({ message: `This ${quiz.type.toLowerCase()} closed on ${quiz.dueDate}` });
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [classes] = await connection.execute('SELECT id, name FROM classes WHERE id = ?', [Number(classId)]);
+    if (!classes.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Choose a valid class' });
     }
-    const hidden = quiz.questions.map((q) => ({ question: q.question, options: q.options }));
-    return res.json({ ...summarise(data, quiz, req.user), questions: hidden, submission: null });
-  }
+    const [assignments] = await connection.execute(
+      'SELECT teacher_id FROM class_subjects WHERE class_id = ? AND subject = ?',
+      [Number(classId), subject]
+    );
+    if (!assignments.length || Number(assignments[0].teacher_id) !== Number(req.user.id)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'You can only create quizzes for subjects you teach' });
+    }
 
-  if (req.user.role === 'teacher' && quiz.teacherId !== req.user.id) {
-    return res.status(403).json({ message: 'This is not your quiz' });
+    const quizType = type === 'Test' ? 'Test' : 'Quiz';
+    const [result] = await connection.execute(
+      'INSERT INTO quizzes (title, subject, class_id, teacher_id, type, duration_mins, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [title.trim(), subject, Number(classId), req.user.id, quizType, Number(durationMins) || 15, dueDate || null]
+    );
+    for (const question of cleaned) {
+      await connection.execute(
+        'INSERT INTO quiz_questions (quiz_id, question, option_a, option_b, option_c, option_d, answer_index) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [result.insertId, question.question, ...Array.from({ length: 4 }, (_, index) => question.options[index] || ''), question.answerIndex]
+      );
+    }
+    const questionNoun = `question${cleaned.length === 1 ? '' : 's'}`;
+    const noticeBody = `${subject} · ${cleaned.length} ${questionNoun}${dueDate ? ` · due ${dueDate}` : ''}`;
+    await connection.execute(
+      'INSERT INTO notifications (user_id, title, body, type, link) SELECT id, ?, ?, ?, ? FROM users WHERE role = ? AND class_id = ?',
+      [`New ${quizType.toLowerCase()}: ${title.trim()}`, noticeBody, 'quiz', `/lms/${result.insertId}`, 'student', Number(classId)]
+    );
+    await connection.commit();
+    const quiz = await loadQuiz(Number(result.insertId));
+    res.status(201).json(summarise(quiz, req.user));
+  } catch (err) {
+    if (connection) await connection.rollback();
+    next(err);
+  } finally {
+    connection?.release();
   }
-  res.json({ ...summarise(data, quiz, req.user), questions: quiz.questions });
 });
 
-// POST /api/lms/quizzes/:id/submit  { answers: [1, 0, 2, ...] }
-router.post('/quizzes/:id/submit', requireRole('student'), (req, res) => {
-  const data = db.read();
-  const quiz = data.quizzes.find((q) => q.id === Number(req.params.id));
-  if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
-
-  const me = data.users.find((u) => u.id === req.user.id);
-  if (me.classId !== quiz.classId) return res.status(403).json({ message: 'This quiz is not for your class' });
-  if (data.submissions.some((s) => s.quizId === quiz.id && s.studentId === me.id)) {
-    return res.status(400).json({ message: 'You have already submitted this' });
+router.get('/quizzes/:id', async (req, res, next) => {
+  try {
+    const quiz = await loadQuiz(Number(req.params.id));
+    if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
+    const item = summarise(quiz, req.user);
+    if (req.user.role === 'student') {
+      const [students] = await pool.execute('SELECT class_id FROM users WHERE id = ? AND role = ?', [req.user.id, 'student']);
+      if (Number(students[0]?.class_id) !== quiz.classId) return res.status(403).json({ message: 'This quiz is not for your class' });
+      const submission = quiz.submissions.find((row) => row.studentId === Number(req.user.id));
+      if (submission) return res.json({ ...item, questions: quiz.questions, submission });
+      if (quiz.dueDate && String(quiz.dueDate).slice(0, 10) < today()) {
+        return res.status(403).json({ message: `This ${quiz.type.toLowerCase()} closed on ${String(quiz.dueDate).slice(0, 10)}` });
+      }
+      return res.json({ ...item, questions: quiz.questions.map(({ question, options }) => ({ question, options })), submission: null });
+    }
+    if (req.user.role === 'teacher' && quiz.teacherId !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'This is not your quiz' });
+    }
+    res.json({ ...item, questions: quiz.questions });
+  } catch (err) {
+    next(err);
   }
-  if (quiz.dueDate && quiz.dueDate < today()) {
-    return res.status(400).json({ message: 'This quiz is closed' });
-  }
-
-  const answers = Array.isArray(req.body.answers) ? req.body.answers : [];
-  let score = 0;
-  quiz.questions.forEach((q, i) => {
-    if (Number(answers[i]) === q.answerIndex) score += 1;
-  });
-
-  const submission = {
-    id: db.nextId(data.submissions),
-    quizId: quiz.id,
-    studentId: me.id,
-    answers: quiz.questions.map((_, i) => (answers[i] === null || answers[i] === undefined ? null : Number(answers[i]))),
-    score,
-    total: quiz.questions.length,
-    submittedAt: new Date().toISOString(),
-  };
-  data.submissions.push(submission);
-
-  notifyUser(data, quiz.teacherId, {
-    title: 'New quiz submission',
-    body: `${me.name} scored ${score}/${quiz.questions.length} on ${quiz.title}.`,
-    type: 'submission',
-    link: '/lms',
-  });
-
-  db.write(data);
-
-  res.status(201).json({ ...summarise(data, quiz, req.user), questions: quiz.questions, submission });
 });
 
-// POST /api/lms/quizzes/:id/proctoring-recording - stores the completed camera recording
-router.post(
-  '/quizzes/:id/proctoring-recording',
-  requireRole('student'),
-  express.raw({ type: /video\/(webm|mp4)/, limit: '150mb' }),
-  (req, res) => {
-    const data = db.read();
-    if (!Array.isArray(data.lms_proctoring)) data.lms_proctoring = [];
-    const quiz = data.quizzes.find((item) => item.id === Number(req.params.id));
-    const student = data.users.find((item) => item.id === req.user.id && item.role === 'student');
-    if (!quiz || !student || student.classId !== quiz.classId) return res.status(403).json({ message: 'You cannot upload a recording for this assessment' });
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
+router.post('/quizzes/:id/submit', requireRole('student'), async (req, res, next) => {
+  const quizId = Number(req.params.id);
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const quiz = await loadQuiz(quizId);
+    if (!quiz) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Quiz not found' });
+    }
+    const [students] = await connection.execute('SELECT id, name, class_id FROM users WHERE id = ? AND role = ?', [req.user.id, 'student']);
+    const student = students[0];
+    if (!student || Number(student.class_id) !== quiz.classId) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'This quiz is not for your class' });
+    }
+    if (quiz.submissions.some((submission) => submission.studentId === Number(student.id))) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'You have already submitted this' });
+    }
+    if (quiz.dueDate && String(quiz.dueDate).slice(0, 10) < today()) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'This quiz is closed' });
+    }
 
-    const recordingsDir = path.join(__dirname, '..', 'data', 'proctoring');
+    const answers = Array.isArray(req.body.answers) ? req.body.answers : [];
+    const normalizedAnswers = quiz.questions.map((_, index) => answers[index] == null ? null : Number(answers[index]));
+    const score = quiz.questions.reduce((total, question, index) => total + (Number(normalizedAnswers[index]) === question.answerIndex ? 1 : 0), 0);
+    const [result] = await connection.execute(
+      'INSERT INTO submissions (quiz_id, student_id, answers, score, total) VALUES (?, ?, ?, ?, ?)',
+      [quizId, student.id, JSON.stringify(normalizedAnswers), score, quiz.questions.length]
+    );
+    await notify(connection, quiz.teacherId, 'New quiz submission', `${student.name} scored ${score}/${quiz.questions.length} on ${quiz.title}.`, 'submission', '/lms');
+    await connection.commit();
+    const submission = { id: Number(result.insertId), quizId, studentId: Number(student.id), answers: normalizedAnswers, score, total: quiz.questions.length, submittedAt: new Date().toISOString() };
+    quiz.submissions.push(submission);
+    res.status(201).json({ ...summarise(quiz, req.user), questions: quiz.questions, submission });
+  } catch (err) {
+    if (connection) await connection.rollback();
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'You have already submitted this' });
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
+router.post('/quizzes/:id/proctoring-recording', requireRole('student'), express.raw({ type: /video\/(webm|mp4)/, limit: '150mb' }), async (req, res, next) => {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ message: 'No camera recording was received' });
+  try {
+    const quiz = await loadQuiz(Number(req.params.id));
+    const [students] = await pool.execute('SELECT id, class_id FROM users WHERE id = ? AND role = ?', [req.user.id, 'student']);
+    const student = students[0];
+    if (!quiz || !student || Number(student.class_id) !== quiz.classId) {
+      return res.status(403).json({ message: 'You cannot upload a recording for this assessment' });
+    }
+    const recordingsDir = path.resolve(process.env.PROCTORING_DIR || path.join(__dirname, '..', 'data', 'proctoring'));
     fs.mkdirSync(recordingsDir, { recursive: true });
     const fileName = `quiz-${quiz.id}-student-${student.id}-${Date.now()}.webm`;
     fs.writeFileSync(path.join(recordingsDir, fileName), req.body);
-    data.lms_proctoring.push({
-      id: db.nextId(data.lms_proctoring), quizId: quiz.id, studentId: student.id, fileName,
-      mimeType: req.headers['content-type'] || 'video/webm', bytes: req.body.length, recordedAt: new Date().toISOString(),
-    });
-    db.write(data);
+    await pool.execute(
+      'INSERT INTO lms_proctoring (quiz_id, student_id, file_name, mime_type, bytes) VALUES (?, ?, ?, ?, ?)',
+      [quiz.id, student.id, fileName, req.headers['content-type'] || 'video/webm', req.body.length]
+    );
     res.status(201).json({ saved: true });
+  } catch (err) {
+    next(err);
   }
-);
-
-// GET /api/lms/quizzes/:id/submissions  – who took it and how they did
-router.get('/quizzes/:id/submissions', requireRole('teacher', 'admin'), (req, res) => {
-  const data = db.read();
-  const quiz = data.quizzes.find((q) => q.id === Number(req.params.id));
-  if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
-  if (req.user.role === 'teacher' && quiz.teacherId !== req.user.id) {
-    return res.status(403).json({ message: 'This is not your quiz' });
-  }
-
-  const students = data.users.filter((u) => u.role === 'student' && u.classId === quiz.classId);
-  const rows = students.map((student) => {
-    const sub = data.submissions.find((s) => s.quizId === quiz.id && s.studentId === student.id);
-    return {
-      studentId: student.id, name: student.name, schoolId: student.schoolId,
-      submitted: !!sub, score: sub ? sub.score : null, total: quiz.questions.length,
-      submittedAt: sub ? sub.submittedAt : null,
-    };
-  });
-  res.json({ quiz: summarise(data, quiz, req.user), rows });
 });
 
-// DELETE /api/lms/quizzes/:id
-router.delete('/quizzes/:id', requireRole('teacher', 'admin'), (req, res) => {
-  const data = db.read();
-  const id = Number(req.params.id);
-  const quiz = data.quizzes.find((q) => q.id === id);
-  if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
-  if (req.user.role === 'teacher' && quiz.teacherId !== req.user.id) {
-    return res.status(403).json({ message: 'This is not your quiz' });
+router.get('/quizzes/:id/submissions', requireRole('teacher', 'admin'), async (req, res, next) => {
+  try {
+    const quiz = await loadQuiz(Number(req.params.id));
+    if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
+    if (req.user.role === 'teacher' && quiz.teacherId !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'This is not your quiz' });
+    }
+    const [students] = await pool.execute(
+      'SELECT id, name, school_id FROM users WHERE role = ? AND class_id = ? ORDER BY name',
+      ['student', quiz.classId]
+    );
+    const submissions = new Map(quiz.submissions.map((submission) => [submission.studentId, submission]));
+    const rows = students.map((student) => {
+      const submission = submissions.get(Number(student.id));
+      return {
+        studentId: Number(student.id), name: student.name, schoolId: student.school_id,
+        submitted: Boolean(submission), score: submission ? submission.score : null,
+        total: quiz.questions.length, submittedAt: submission ? submission.submittedAt : null,
+      };
+    });
+    res.json({ quiz: summarise(quiz, req.user), rows });
+  } catch (err) {
+    next(err);
   }
-  data.quizzes = data.quizzes.filter((q) => q.id !== id);
-  data.submissions = data.submissions.filter((s) => s.quizId !== id);
-  db.write(data);
-  res.json({ message: 'Deleted' });
+});
+
+router.delete('/quizzes/:id', requireRole('teacher', 'admin'), async (req, res, next) => {
+  try {
+    const quizId = Number(req.params.id);
+    const [rows] = await pool.execute('SELECT teacher_id FROM quizzes WHERE id = ?', [quizId]);
+    if (!rows.length) return res.status(404).json({ message: 'Quiz not found' });
+    if (req.user.role === 'teacher' && Number(rows[0].teacher_id) !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'This is not your quiz' });
+    }
+    await pool.execute('DELETE FROM quizzes WHERE id = ?', [quizId]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

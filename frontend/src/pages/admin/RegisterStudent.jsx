@@ -12,9 +12,7 @@ const EMPTY = {
   guardianName: '', guardianPhone: '', address: '', email: '',
 };
 
-const SAMPLE_CSV = `firstName,lastName,gender,dob,className,guardianName,guardianPhone,address,email
-Ada,Obi,Female,2013-05-14,JSS 1A,Mr Obi,0801 234 5678,12 Palm Street,
-Bayo,Lawal,Male,2013-08-02,JSS 1A,Mrs Lawal,0802 345 6789,,`;
+const CSV_HEADER = 'firstName,lastName,gender,dob,className,guardianName,guardianPhone,address,email';
 
 function parseRows(text, classes) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -215,7 +213,6 @@ export default function RegisterStudent() {
           <div className="card">
             <div className="card-head">
               <h3>Paste student rows</h3>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCsv(SAMPLE_CSV)}><FileText size={15} />Use sample data</button>
             </div>
             <p className="muted small" style={{ marginBottom: 10 }}>
               One student per line, separated by commas: <code>firstName,lastName,gender,dob,className,guardianName,guardianPhone,address,email</code>.
@@ -223,7 +220,7 @@ export default function RegisterStudent() {
             </p>
             <textarea
               className="textarea" rows={8} value={csv} onChange={(e) => setCsv(e.target.value)}
-              placeholder={SAMPLE_CSV}
+              placeholder={CSV_HEADER}
             />
             <div className="form-actions" style={{ padding: 0, marginTop: 14 }}>
               <span className="muted small grow">{classes.data.map((c) => c.name).join(' · ')}</span>

@@ -1,171 +1,246 @@
 const express = require('express');
-const db = require('../data/db');
+const { pool } = require('../data/mysql');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { teacherClassIds } = require('../utils/helpers');
-const { notifyUsers } = require('../data/notify');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const DEFAULT_SUBJECTS = [
-  'Mathematics', 'English Language', 'Basic Science', 'Civic Education', 'Computer Studies', 'Social Studies',
-];
-const PERIODS = ['08:00 - 08:40', '08:40 - 09:20', '09:20 - 10:00', '10:30 - 11:10', '11:10 - 11:50', '11:50 - 12:30'];
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-function teacherName(data, id) {
-  const t = data.users.find((u) => u.id === id);
-  return t ? t.name : 'Not assigned';
-}
+async function classView(classId) {
+  const [classRows] = await pool.execute(
+    'SELECT c.*, u.name AS form_teacher_name, (SELECT COUNT(*) FROM users s WHERE s.role = ? AND s.class_id = c.id) AS student_count FROM classes c LEFT JOIN users u ON u.id = c.form_teacher_id WHERE c.id = ?',
+    ['student', classId]
+  );
+  const row = classRows[0];
+  if (!row) return null;
 
-// Adds teacher names and student counts so the frontend has less work to do
-function describe(data, cls) {
-  return {
-    ...cls,
-    formTeacherName: teacherName(data, cls.formTeacherId),
-    studentCount: data.users.filter((u) => u.role === 'student' && u.classId === cls.id).length,
-    subjects: cls.subjects.map((s) => ({ ...s, teacherName: teacherName(data, s.teacherId) })),
-  };
-}
+  const [[subjectRows], [slotRows]] = await Promise.all([
+    pool.execute(
+      'SELECT cs.subject, cs.teacher_id, u.name AS teacher_name FROM class_subjects cs LEFT JOIN users u ON u.id = cs.teacher_id WHERE cs.class_id = ? ORDER BY cs.id',
+      [classId]
+    ),
+    pool.execute('SELECT day, period_index, time_slot, subject FROM timetable_slots WHERE class_id = ? ORDER BY day, period_index', [classId]),
+  ]);
 
-// GET /api/classes  – admin: all classes, teacher: their classes, student: their own class
-router.get('/', (req, res) => {
-  const data = db.read();
-  let list = data.classes;
-
-  if (req.user.role === 'teacher' && req.query.all !== 'true') {
-    const mine = teacherClassIds(data, req.user.id);
-    list = list.filter((c) => mine.includes(c.id));
-  }
-  if (req.user.role === 'student') {
-    const me = data.users.find((u) => u.id === req.user.id);
-    list = list.filter((c) => c.id === me.classId);
-  }
-  res.json(list.map((c) => describe(data, c)));
-});
-
-// GET /api/classes/:id  – full details with the class list
-router.get('/:id', (req, res) => {
-  const data = db.read();
-  const cls = data.classes.find((c) => c.id === Number(req.params.id));
-  if (!cls) return res.status(404).json({ message: 'Class not found' });
-
-  if (req.user.role === 'teacher' && !teacherClassIds(data, req.user.id).includes(cls.id)) {
-    return res.status(403).json({ message: 'This is not one of your classes' });
-  }
-  if (req.user.role === 'student') {
-    const me = data.users.find((u) => u.id === req.user.id);
-    if (me.classId !== cls.id) return res.status(403).json({ message: 'This is not your class' });
-  }
-  const students = data.users
-    .filter((u) => u.role === 'student' && u.classId === cls.id)
-    .map((s) => ({ id: s.id, name: s.name, schoolId: s.schoolId, gender: s.gender }));
-
-  res.json({ ...describe(data, cls), students });
-});
-
-// POST /api/classes  – create a class (admin only)
-router.post('/', requireRole('admin'), (req, res) => {
-  const { name, level, formTeacherId } = req.body;
-  if (!name) return res.status(400).json({ message: 'Give the class a name' });
-
-  const data = db.read();
-  if (data.classes.some((c) => c.name.toLowerCase() === name.trim().toLowerCase())) {
-    return res.status(409).json({ message: 'A class with that name already exists' });
-  }
-
-  const timetable = { periods: PERIODS, days: {} };
-  WEEKDAYS.forEach((day, d) => {
-    timetable.days[day] = PERIODS.map((_, p) => DEFAULT_SUBJECTS[(p + d) % DEFAULT_SUBJECTS.length]);
+  const periods = [...new Set(slotRows.map((slot) => slot.time_slot))];
+  const days = Object.fromEntries(WEEKDAYS.map((day) => [day, Array(periods.length).fill('Free period')]));
+  slotRows.forEach((slot) => {
+    if (days[slot.day]) days[slot.day][Number(slot.period_index)] = slot.subject;
   });
 
-  const cls = {
-    id: db.nextId(data.classes),
-    name: name.trim(),
-    level: level || 'Junior',
-    formTeacherId: formTeacherId ? Number(formTeacherId) : null,
-    subjects: DEFAULT_SUBJECTS.map((s) => ({ name: s, teacherId: null })),
-    timetable,
+  return {
+    id: Number(row.id),
+    name: row.name,
+    level: row.level || '',
+    schoolSection: row.school_section || '',
+    classLevel: row.class_level || '',
+    formTeacherId: row.form_teacher_id === null ? null : Number(row.form_teacher_id),
+    formTeacherName: row.form_teacher_name || 'Not assigned',
+    studentCount: Number(row.student_count),
+    subjects: subjectRows.map((subject) => ({
+      name: subject.subject,
+      teacherId: subject.teacher_id === null ? null : Number(subject.teacher_id),
+      teacherName: subject.teacher_name || 'Not assigned',
+    })),
+    timetable: { periods, days },
   };
-  data.classes.push(cls);
-  db.write(data);
-  res.status(201).json(describe(data, cls));
+}
+
+async function isAssignedTeacher(classId, teacherId) {
+  const [rows] = await pool.execute(
+    'SELECT 1 FROM classes c WHERE c.id = ? AND c.form_teacher_id = ? UNION SELECT 1 FROM class_subjects WHERE class_id = ? AND teacher_id = ? LIMIT 1',
+    [classId, teacherId, classId, teacherId]
+  );
+  return rows.length > 0;
+}
+
+async function notifyClassStudents(classId, className) {
+  await pool.execute(
+    'INSERT INTO notifications (user_id, title, body, type, link) SELECT id, ?, ?, ?, ? FROM users WHERE role = ? AND class_id = ?',
+    [`${className} timetable updated`, 'Your class timetable has changed. Check the Classes page for the new schedule.', 'info', '/classes', 'student', classId]
+  );
+}
+
+router.get('/', async (req, res, next) => {
+  try {
+    let query = 'SELECT id FROM classes';
+    const values = [];
+    if (req.user.role === 'teacher' && req.query.all !== 'true') {
+      query += ' WHERE form_teacher_id = ? OR id IN (SELECT class_id FROM class_subjects WHERE teacher_id = ?)';
+      values.push(req.user.id, req.user.id);
+    } else if (req.user.role === 'student') {
+      query = 'SELECT class_id AS id FROM users WHERE id = ? AND role = ? AND class_id IS NOT NULL';
+      values.push(req.user.id, 'student');
+    }
+    query += ' ORDER BY id';
+    const [rows] = await pool.execute(query, values);
+    res.json((await Promise.all(rows.map((row) => classView(Number(row.id))))).filter(Boolean));
+  } catch (err) {
+    next(err);
+  }
 });
 
-// PUT /api/classes/:id  – change the form teacher or who teaches each subject (admin only)
-router.put('/:id', requireRole('admin'), (req, res) => {
-  const data = db.read();
-  const cls = data.classes.find((c) => c.id === Number(req.params.id));
-  if (!cls) return res.status(404).json({ message: 'Class not found' });
-
-  const { name, formTeacherId, subjects } = req.body;
-  if (name) cls.name = name.trim();
-  if (formTeacherId !== undefined) cls.formTeacherId = formTeacherId ? Number(formTeacherId) : null;
-  if (Array.isArray(subjects)) {
-    cls.subjects = subjects.map((s) => ({ name: s.name, teacherId: s.teacherId ? Number(s.teacherId) : null }));
+router.get('/subjects', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT name FROM subjects WHERE is_active = 1 ORDER BY name');
+    res.json(rows.map((row) => row.name));
+  } catch (err) {
+    next(err);
   }
-  db.write(data);
-  res.json(describe(data, cls));
 });
 
-// PUT /api/classes/:id/timetable  { periods: [...], days: { Monday: [...], ... } }
-// Replaces the whole weekly timetable for a class.
-router.put('/:id/timetable', requireRole('admin', 'teacher'), (req, res) => {
-  const data = db.read();
-  const cls = data.classes.find((c) => c.id === Number(req.params.id));
-  if (!cls) return res.status(404).json({ message: 'Class not found' });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const classId = Number(req.params.id);
+    const cls = await classView(classId);
+    if (!cls) return res.status(404).json({ message: 'Class not found' });
 
-  if (req.user.role !== 'admin' && (
-    req.user.role !== 'teacher' || !teacherClassIds(data, req.user.id).includes(cls.id)
-  )) {
-    return res.status(403).json({ message: 'Only an assigned teacher can edit this timetable' });
+    if (req.user.role === 'teacher' && !await isAssignedTeacher(classId, req.user.id)) {
+      return res.status(403).json({ message: 'This is not one of your classes' });
+    }
+    if (req.user.role === 'student') {
+      const [studentRows] = await pool.execute('SELECT class_id FROM users WHERE id = ? AND role = ?', [req.user.id, 'student']);
+      if (Number(studentRows[0]?.class_id) !== classId) return res.status(403).json({ message: 'This is not your class' });
+    }
+    const [students] = await pool.execute(
+      'SELECT id, name, school_id AS schoolId, gender FROM users WHERE role = ? AND class_id = ? ORDER BY name',
+      ['student', classId]
+    );
+    res.json({ ...cls, students: students.map((student) => ({ ...student, id: Number(student.id) })) });
+  } catch (err) {
+    next(err);
   }
+});
 
+router.post('/', requireRole('admin'), async (req, res, next) => {
+  const { name, level, formTeacherId, schoolSection, classLevel } = req.body;
+  if (!name) return res.status(400).json({ message: 'Give the class a name' });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [result] = await connection.execute(
+      'INSERT INTO classes (name, level, school_section, class_level, form_teacher_id) VALUES (?, ?, ?, ?, ?)',
+      [name.trim(), level || 'Junior', schoolSection || '', classLevel || '', formTeacherId ? Number(formTeacherId) : null]
+    );
+    await connection.commit();
+    res.status(201).json(await classView(result.insertId));
+  } catch (err) {
+    await connection.rollback();
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A class with that name already exists' });
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
+router.put('/:id', requireRole('admin'), async (req, res, next) => {
+  const classId = Number(req.params.id);
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [classRows] = await connection.execute('SELECT id FROM classes WHERE id = ? FOR UPDATE', [classId]);
+    if (!classRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Class not found' });
+    }
+    const { name, level, formTeacherId, schoolSection, classLevel, subjects } = req.body;
+    const columns = [];
+    const values = [];
+    for (const [field, column] of [['name', 'name'], ['level', 'level'], ['schoolSection', 'school_section'], ['classLevel', 'class_level']]) {
+      if (req.body[field] !== undefined) {
+        columns.push(`${column} = ?`);
+        values.push(field === 'name' ? String(name).trim() : req.body[field]);
+      }
+    }
+    if (formTeacherId !== undefined) {
+      columns.push('form_teacher_id = ?');
+      values.push(formTeacherId ? Number(formTeacherId) : null);
+    }
+    if (columns.length) await connection.execute(`UPDATE classes SET ${columns.join(', ')} WHERE id = ?`, [...values, classId]);
+    if (Array.isArray(subjects)) {
+      await connection.execute('DELETE FROM class_subjects WHERE class_id = ?', [classId]);
+      for (const subject of subjects) {
+        await connection.execute(
+          'INSERT INTO class_subjects (class_id, subject, teacher_id) VALUES (?, ?, ?)',
+          [classId, subject.name, subject.teacherId ? Number(subject.teacherId) : null]
+        );
+      }
+    }
+    await connection.commit();
+    res.json(await classView(classId));
+  } catch (err) {
+    await connection.rollback();
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A class with that name already exists' });
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
+router.put('/:id/timetable', requireRole('admin', 'teacher'), async (req, res, next) => {
+  const classId = Number(req.params.id);
   const { periods, days } = req.body;
-
-  if (!Array.isArray(periods) || periods.length === 0 || periods.some((p) => !p || !String(p).trim())) {
+  if (!Array.isArray(periods) || periods.length === 0 || periods.some((period) => !period || !String(period).trim())) {
     return res.status(400).json({ message: 'Add at least one period, with a time for each' });
   }
-  if (!days || typeof days !== 'object') {
-    return res.status(400).json({ message: 'Missing the weekly schedule' });
-  }
+  if (!days || typeof days !== 'object') return res.status(400).json({ message: 'Missing the weekly schedule' });
   for (const day of WEEKDAYS) {
-    const row = days[day];
-    if (!Array.isArray(row) || row.length !== periods.length) {
+    if (!Array.isArray(days[day]) || days[day].length !== periods.length) {
       return res.status(400).json({ message: `${day} needs a subject for every period` });
     }
-    if (row.some((cell) => !cell || !String(cell).trim())) {
+    if (days[day].some((cell) => !cell || !String(cell).trim())) {
       return res.status(400).json({ message: `Fill in every period for ${day}, or use "Free period"` });
     }
   }
 
-  cls.timetable = {
-    periods: periods.map((p) => String(p).trim()),
-    days: Object.fromEntries(WEEKDAYS.map((day) => [day, days[day].map((cell) => String(cell).trim())])),
-  };
-
-  const classmates = data.users.filter((u) => u.role === 'student' && u.classId === cls.id).map((u) => u.id);
-  notifyUsers(data, classmates, {
-    title: `${cls.name} timetable updated`,
-    body: 'Your class timetable has changed. Check the Classes page for the new schedule.',
-    type: 'info',
-    link: '/classes',
-  });
-
-  db.write(data);
-  res.json(describe(data, cls));
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [classRows] = await connection.execute('SELECT name FROM classes WHERE id = ? FOR UPDATE', [classId]);
+    if (!classRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Class not found' });
+    }
+    if (req.user.role === 'teacher' && !await isAssignedTeacher(classId, req.user.id)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Only an assigned teacher can edit this timetable' });
+    }
+    await connection.execute('DELETE FROM timetable_slots WHERE class_id = ?', [classId]);
+    for (const day of WEEKDAYS) {
+      for (const [periodIndex, period] of periods.entries()) {
+        await connection.execute(
+          'INSERT INTO timetable_slots (class_id, day, period_index, time_slot, subject) VALUES (?, ?, ?, ?, ?)',
+          [classId, day, periodIndex, String(period).trim(), String(days[day][periodIndex]).trim()]
+        );
+      }
+    }
+    await connection.commit();
+    await notifyClassStudents(classId, classRows[0].name);
+    res.json(await classView(classId));
+  } catch (err) {
+    await connection.rollback();
+    next(err);
+  } finally {
+    connection?.release();
+  }
 });
 
-// DELETE /api/classes/:id  – only empty classes can be deleted
-router.delete('/:id', requireRole('admin'), (req, res) => {
-  const data = db.read();
-  const id = Number(req.params.id);
-  if (data.users.some((u) => u.role === 'student' && u.classId === id)) {
-    return res.status(400).json({ message: 'Move the students out of this class before deleting it' });
+router.delete('/:id', requireRole('admin'), async (req, res, next) => {
+  try {
+    const classId = Number(req.params.id);
+    const [students] = await pool.execute('SELECT COUNT(*) AS count FROM users WHERE role = ? AND class_id = ?', ['student', classId]);
+    if (Number(students[0].count)) return res.status(400).json({ message: 'Move the students out of this class before deleting it' });
+    const [result] = await pool.execute('DELETE FROM classes WHERE id = ?', [classId]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Class not found' });
+    res.json({ message: 'Class deleted' });
+  } catch (err) {
+    next(err);
   }
-  data.classes = data.classes.filter((c) => c.id !== id);
-  db.write(data);
-  res.json({ message: 'Class deleted' });
 });
 
 module.exports = router;

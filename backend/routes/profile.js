@@ -1,7 +1,8 @@
 const express = require('express');
-const db = require('../data/db');
+const { pool } = require('../data/mysql');
 const { requireAuth } = require('../middleware/auth');
-const { safeUser, teacherClassIds } = require('../utils/helpers');
+const { safeUser } = require('../utils/helpers');
+const { userFromRow } = require('../utils/mysqlRecords');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -14,41 +15,65 @@ const EDITABLE = {
   parent: ['name', 'phone', 'address'],
 };
 
-function build(data, user) {
+async function build(user) {
   const profile = safeUser(user);
   if (user.role === 'student') {
-    const cls = data.classes.find((c) => c.id === user.classId);
-    const formTeacher = cls && data.users.find((u) => u.id === cls.formTeacherId);
-    profile.className = cls ? cls.name : 'Unassigned';
-    profile.formTeacherName = formTeacher ? formTeacher.name : 'Not assigned';
+    const [rows] = await pool.execute(
+      'SELECT c.name AS class_name, u.name AS form_teacher_name FROM classes c LEFT JOIN users u ON u.id = c.form_teacher_id WHERE c.id = ?',
+      [user.classId]
+    );
+    profile.className = rows[0]?.class_name || 'Unassigned';
+    profile.formTeacherName = rows[0]?.form_teacher_name || 'Not assigned';
   }
   if (user.role === 'teacher') {
-    const ids = teacherClassIds(data, user.id);
-    profile.classes = data.classes.filter((c) => ids.includes(c.id)).map((c) => c.name);
+    const [rows] = await pool.execute(
+      'SELECT DISTINCT c.name FROM classes c LEFT JOIN class_subjects cs ON cs.class_id = c.id WHERE c.form_teacher_id = ? OR cs.teacher_id = ? ORDER BY c.name',
+      [user.id, user.id]
+    );
+    profile.classes = rows.map((row) => row.name);
   }
   if (user.role === 'parent') {
-    profile.children = data.users.filter((u) => u.role === 'student' && u.parentId === user.id).map((u) => u.name);
+    const [rows] = await pool.execute('SELECT name FROM users WHERE role = ? AND parent_id = ? ORDER BY name', ['student', user.id]);
+    profile.children = rows.map((row) => row.name);
   }
   return profile;
 }
 
 // GET /api/profile
-router.get('/', (req, res) => {
-  const data = db.read();
-  const user = data.users.find((u) => u.id === req.user.id);
-  res.json(build(data, user));
+router.get('/', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+    const user = userFromRow(rows[0]);
+    if (!user) return res.status(404).json({ message: 'Account not found' });
+    res.json(await build(user));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // PUT /api/profile
-router.put('/', (req, res) => {
-  const data = db.read();
-  const user = data.users.find((u) => u.id === req.user.id);
-  EDITABLE[user.role].forEach((field) => {
-    if (req.body[field] !== undefined) user[field] = String(req.body[field]).trim();
-  });
-  if (!user.name) return res.status(400).json({ message: 'Name cannot be empty' });
-  db.write(data);
-  res.json(build(data, user));
+router.put('/', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+    const user = userFromRow(rows[0]);
+    if (!user) return res.status(404).json({ message: 'Account not found' });
+
+    const fields = EDITABLE[user.role] || [];
+    const columnNames = { phone: 'phone', address: 'address', bio: 'bio', qualification: 'qualification', name: 'name' };
+    const updates = fields.filter((field) => req.body[field] !== undefined);
+    const values = updates.map((field) => String(req.body[field]).trim());
+    const nextName = updates.includes('name') ? values[updates.indexOf('name')] : user.name;
+    if (!nextName) return res.status(400).json({ message: 'Name cannot be empty' });
+
+    if (updates.length) {
+      const assignments = updates.map((field) => `${columnNames[field]} = ?`).join(', ');
+      await pool.execute(`UPDATE users SET ${assignments} WHERE id = ?`, [...values, req.user.id]);
+    }
+    const [updatedRows] = await pool.execute('SELECT * FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+    res.json(await build(userFromRow(updatedRows[0])));
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

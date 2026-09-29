@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Users, FileText } from 'lucide-react';
+import { Plus, Trash2, Users } from 'lucide-react';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -7,12 +7,9 @@ import Modal from '../../components/ui/Modal.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import { Loading, ErrorNote, EmptyState } from '../../components/ui/Feedback.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
-import { SUBJECTS } from '../../utils/terms.js';
 
 const EMPTY = { name: '', email: '', phone: '', qualification: '', subjects: [] };
-const SAMPLE_CSV = `name,email,phone,qualification
-Mrs. Grace Bello,grace.bello@crestview.edu,0803 111 2222,B.Sc Mathematics
-Mr. Femi Alade,femi.alade@crestview.edu,0804 222 3333,`;
+const CSV_HEADER = 'name,email,phone,qualification';
 
 function parseTeacherRows(text) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -29,6 +26,7 @@ function parseTeacherRows(text) {
 export default function Teachers() {
   const toast = useToast();
   const { data, loading, error, reload } = useFetch('/teachers');
+  const subjectOptions = useFetch('/classes/subjects');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [created, setCreated] = useState(null);
@@ -41,8 +39,8 @@ export default function Teachers() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorNote message={error} onRetry={reload} />;
+  if (loading || subjectOptions.loading) return <Loading />;
+  if (error || subjectOptions.error) return <ErrorNote message={error || subjectOptions.error} onRetry={() => { reload(); subjectOptions.reload(); }} />;
 
   function toggleSubject(subject) {
     const has = form.subjects.includes(subject);
@@ -168,7 +166,7 @@ export default function Teachers() {
               <div className="field full">
                 <span className="label">Subjects they can teach</span>
                 <div className="checks">
-                  {SUBJECTS.map((s) => (
+                  {(subjectOptions.data || []).map((s) => (
                     <label key={s} className="check">
                       <input type="checkbox" checked={form.subjects.includes(s)} onChange={() => toggleSubject(s)} />
                       {s}
@@ -192,9 +190,8 @@ export default function Teachers() {
             Subjects can be assigned afterwards from the Classes page.
           </p>
           <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCsv(SAMPLE_CSV)}><FileText size={15} />Use sample data</button>
           </div>
-          <textarea className="textarea" rows={6} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={SAMPLE_CSV} />
+          <textarea className="textarea" rows={6} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={CSV_HEADER} />
           <div className="form-actions" style={{ padding: 0, marginTop: 14 }}>
             <button type="button" className="btn btn-ghost" onClick={closeBulk}>Close</button>
             <button type="button" className="btn btn-outline" onClick={previewCsv} disabled={!csv.trim()}>Preview rows</button>

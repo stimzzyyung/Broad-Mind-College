@@ -13,17 +13,17 @@ export default function QuestionCreate() {
 
   // Form State
   const [question, setQuestion] = useState('');
-  const [type, setType] = useState('multiple_choice');
+  const [type, setType] = useState('');
   const [options, setOptions] = useState(['', '', '', '']);
   const [correctAnswer, setCorrectAnswer] = useState('');
-  const [subject, setSubject] = useState('Mathematics');
-  const [schoolSection, setSchoolSection] = useState('jss');
-  const [classLevel, setClassLevel] = useState('JSS1');
+  const [subject, setSubject] = useState('');
+  const [schoolSection, setSchoolSection] = useState('');
+  const [classLevel, setClassLevel] = useState('');
   const [category, setCategory] = useState('');
-  const [year, setYear] = useState('2026');
-  const [session, setSession] = useState('2026/2027');
-  const [term, setTerm] = useState('First Term');
-  const [difficulty, setDifficulty] = useState('Medium');
+  const [year, setYear] = useState('');
+  const [session, setSession] = useState('');
+  const [term, setTerm] = useState('');
+  const [difficulty, setDifficulty] = useState('');
   const [marks, setMarks] = useState(2);
   const [explanation, setExplanation] = useState('');
 
@@ -35,7 +35,14 @@ export default function QuestionCreate() {
     try {
       const res = await api.get('/cbt/meta');
       setMeta(res);
-      if (res.subjects?.length) setSubject(res.subjects[0]);
+      setSubject(res.subjects?.[0] || '');
+      setType(res.questionTypes?.[0]?.value || '');
+      setSchoolSection(res.schoolSections?.[0]?.id || '');
+      setClassLevel(res.classLevels?.[0]?.name || '');
+      setYear(res.years?.[0] || '');
+      setSession(res.sessions?.[0] || '');
+      setTerm(res.terms?.[0] || '');
+      setDifficulty(res.difficulties?.[0] || '');
     } catch (err) {
       console.error(err);
     }
@@ -81,6 +88,11 @@ export default function QuestionCreate() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+
+    if (!subject || !type || !schoolSection || !classLevel || !year || !session || !term || !difficulty) {
+      setError('Configure school sections, subjects, academic sessions, terms, and question catalogs before creating questions.');
+      return;
+    }
 
     if (!question.trim()) {
       setError('Question text is required');
@@ -160,7 +172,7 @@ export default function QuestionCreate() {
               <div className="form-group">
                 <label>Subject *</label>
                 <select className="select" value={subject} onChange={(e) => setSubject(e.target.value)}>
-                  {(meta?.subjects || ['Mathematics', 'English Language', 'Basic Science', 'Physics']).map((s) => (
+                  {(meta?.subjects || []).map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -172,45 +184,21 @@ export default function QuestionCreate() {
                   className="select"
                   value={schoolSection}
                   onChange={(e) => {
-                    const sec = e.target.value;
-                    setSchoolSection(sec);
-                    if (sec === 'primary') setClassLevel('Primary 1');
-                    else if (sec === 'sss') setClassLevel('SS1');
-                    else setClassLevel('JSS1');
+                    const sectionId = e.target.value;
+                    setSchoolSection(sectionId);
+                    setClassLevel(meta?.classLevels?.find((item) => item.sectionId === sectionId)?.name || '');
                   }}
                 >
-                  <option value="primary">Primary School (P1 - P5)</option>
-                  <option value="jss">Junior Secondary (JSS1 - JSS3)</option>
-                  <option value="sss">Senior Secondary (SS1 - SS3)</option>
+                  <option value="">Choose a school section</option>
+                  {(meta?.schoolSections || []).map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
                 </select>
               </div>
 
               <div className="form-group">
                 <label>Class Level *</label>
                 <select className="select" value={classLevel} onChange={(e) => setClassLevel(e.target.value)}>
-                  {schoolSection === 'primary' && (
-                    <>
-                      <option value="Primary 1">Primary 1</option>
-                      <option value="Primary 2">Primary 2</option>
-                      <option value="Primary 3">Primary 3</option>
-                      <option value="Primary 4">Primary 4</option>
-                      <option value="Primary 5">Primary 5</option>
-                    </>
-                  )}
-                  {schoolSection === 'jss' && (
-                    <>
-                      <option value="JSS1">JSS1</option>
-                      <option value="JSS2">JSS2</option>
-                      <option value="JSS3">JSS3</option>
-                    </>
-                  )}
-                  {schoolSection === 'sss' && (
-                    <>
-                      <option value="SS1">SS1</option>
-                      <option value="SS2">SS2</option>
-                      <option value="SS3">SS3</option>
-                    </>
-                  )}
+                  <option value="">Choose a class level</option>
+                  {(meta?.classLevels || []).filter((item) => item.sectionId === schoolSection).map((levelOption) => <option key={levelOption.id} value={levelOption.name}>{levelOption.name}</option>)}
                 </select>
               </div>
             </div>
@@ -221,7 +209,7 @@ export default function QuestionCreate() {
                 <input
                   type="text"
                   className="input"
-                  placeholder="e.g. Algebra, Grammar, Mechanics"
+                  placeholder="Enter topic"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                 />
@@ -230,19 +218,16 @@ export default function QuestionCreate() {
               <div className="form-group">
                 <label>Question Type *</label>
                 <select className="select" value={type} onChange={(e) => handleTypeChange(e.target.value)}>
-                  <option value="multiple_choice">Multiple Choice (A, B, C, D)</option>
-                  <option value="true_false">True / False</option>
-                  <option value="short_answer">Short Answer</option>
-                  <option value="theory">Theory / Essay</option>
+                  <option value="">Choose a question type</option>
+                  {(meta?.questionTypes || []).map((questionType) => <option key={questionType.value} value={questionType.value}>{questionType.label}</option>)}
                 </select>
               </div>
 
               <div className="form-group">
                 <label>Difficulty *</label>
                 <select className="select" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-                  <option value="Easy">Easy</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Hard">Hard</option>
+                  <option value="">Choose a difficulty</option>
+                  {(meta?.difficulties || []).map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
 
@@ -261,31 +246,25 @@ export default function QuestionCreate() {
             <div className="form-row">
               <div className="form-group">
                 <label>Academic Year</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  placeholder="2026"
-                />
+                <select className="select" value={year} onChange={(e) => setYear(e.target.value)}>
+                  <option value="">Choose an academic year</option>
+                  {(meta?.years || []).map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
               </div>
 
               <div className="form-group">
                 <label>Session</label>
                 <select className="select" value={session} onChange={(e) => setSession(e.target.value)}>
-                  <option value="2026/2027">2026/2027</option>
-                  <option value="2025/2026">2025/2026</option>
-                  <option value="2024/2025">2024/2025</option>
+                  <option value="">Choose a session</option>
+                  {(meta?.sessions || []).map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
 
               <div className="form-group">
                 <label>Term</label>
                 <select className="select" value={term} onChange={(e) => setTerm(e.target.value)}>
-                  <option value="First Term">First Term</option>
-                  <option value="Second Term">Second Term</option>
-                  <option value="Third Term">Third Term</option>
-                  <option value="Final Examination">Final Examination</option>
+                  <option value="">Choose a term</option>
+                  {(meta?.terms || []).map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
             </div>

@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, UserPlus2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { SCHOOL } from '../config/school.js';
+import useFetch from '../hooks/useFetch.js';
 
 // A parent creates their own account here, then registers their children
 // and pays fees from the parent portal. No school ID is needed to sign up.
 export default function Signup() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
+  const { data: schoolSettings } = useFetch('/auth/settings');
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,9 +39,9 @@ export default function Signup() {
     <div className="login">
       <section className="login-board" aria-hidden="true">
         <div>
-          <div className="crest">{SCHOOL.name[0]}</div>
-          <h1>{SCHOOL.name}</h1>
-          <div className="motto">{SCHOOL.motto}</div>
+          <div className="crest">{schoolSettings?.schoolName?.[0] || ''}</div>
+          <h1>{schoolSettings?.schoolName || ''}</h1>
+          <div className="motto">{schoolSettings?.motto || ''}</div>
         </div>
         <div>
           <p style={{ color: '#f5c8dc', maxWidth: '40ch', fontSize: 16 }}>
@@ -62,7 +63,7 @@ export default function Signup() {
             </div>
             <div className="field">
               <label htmlFor="email">Email</label>
-              <input id="email" type="email" className="input" value={form.email} onChange={set('email')} autoComplete="email" required />
+              <input id="email" type="email" className="input" value={form.email} onChange={set('email')} autoComplete="email" placeholder={schoolSettings?.emailDomain ? `you@${schoolSettings.emailDomain}` : 'Enter your email'} required />
             </div>
             <div className="field">
               <label htmlFor="phone">Phone number</label>

@@ -1,45 +1,53 @@
 const express = require('express');
-const db = require('../data/db');
+const { pool } = require('../data/mysql');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/notifications  – mine, newest first, most recent 50
-router.get('/', (req, res) => {
-  const data = db.read();
-  const list = (data.notifications || [])
-    .filter((n) => n.userId === req.user.id)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 50);
-  res.json(list);
+router.get('/', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT id, user_id AS userId, title, body, type, link, is_read AS `read`, created_at AS createdAt FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      [req.user.id]
+    );
+    res.json(rows.map((row) => ({ ...row, id: Number(row.id), userId: Number(row.userId), read: Boolean(row.read) })));
+  } catch (err) {
+    next(err);
+  }
 });
 
-// GET /api/notifications/unread-count  – for the bell badge, polled every so often
-router.get('/unread-count', (req, res) => {
-  const data = db.read();
-  const count = (data.notifications || []).filter((n) => n.userId === req.user.id && !n.read).length;
-  res.json({ count });
+router.get('/unread-count', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0', [req.user.id]);
+    res.json({ count: Number(rows[0].count) });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// POST /api/notifications/read-all
-router.post('/read-all', (req, res) => {
-  const data = db.read();
-  (data.notifications || []).forEach((n) => {
-    if (n.userId === req.user.id) n.read = true;
-  });
-  db.write(data);
-  res.json({ message: 'All notifications marked as read' });
+router.post('/read-all', async (req, res, next) => {
+  try {
+    await pool.execute('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [req.user.id]);
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// POST /api/notifications/:id/read
-router.post('/:id/read', (req, res) => {
-  const data = db.read();
-  const n = (data.notifications || []).find((x) => x.id === Number(req.params.id) && x.userId === req.user.id);
-  if (!n) return res.status(404).json({ message: 'Notification not found' });
-  n.read = true;
-  db.write(data);
-  res.json(n);
+router.post('/:id/read', async (req, res, next) => {
+  try {
+    const [result] = await pool.execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [Number(req.params.id), req.user.id]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Notification not found' });
+    const [rows] = await pool.execute(
+      'SELECT id, user_id AS userId, title, body, type, link, is_read AS `read`, created_at AS createdAt FROM notifications WHERE id = ?',
+      [Number(req.params.id)]
+    );
+    const row = rows[0];
+    res.json({ ...row, id: Number(row.id), userId: Number(row.userId), read: Boolean(row.read) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;
