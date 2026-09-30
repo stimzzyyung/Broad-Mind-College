@@ -41,6 +41,7 @@ app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/students', require('./routes/students'));
 app.use('/api/teachers', require('./routes/teachers'));
+app.use('/api/parents', require('./routes/parents'));
 app.use('/api/classes', require('./routes/classes'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/results', require('./routes/results'));

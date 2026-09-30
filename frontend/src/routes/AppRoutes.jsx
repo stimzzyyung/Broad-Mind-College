@@ -22,6 +22,7 @@ import AdminAnalytics from '../pages/admin/AdminAnalytics.jsx';
 
 // ----- Teacher portal -----
 import TeacherHome from '../pages/teacher/TeacherHome.jsx';
+import OnboardUsers from '../pages/teacher/OnboardUsers.jsx';
 import TeacherClasses from '../pages/teacher/TeacherClasses.jsx';
 import TeacherResults from '../pages/teacher/TeacherResults.jsx';
 import TeacherLMS from '../pages/teacher/TeacherLMS.jsx';
@@ -254,6 +255,7 @@ export default function AppRoutes() {
       >
         <Route index element={<TeacherHome />} />
         <Route path="register-student" element={<RegisterStudent />} />
+        <Route path="onboard-users" element={<OnboardUsers />} />
         <Route path="students" element={<Students />} />
         <Route path="classes" element={<TeacherClasses />} />
         <Route path="results" element={<TeacherResults />} />

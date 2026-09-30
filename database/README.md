@@ -81,6 +81,19 @@ matching what the Node app's own seed script generates:
 | Student   | BMS/26/001                     | student123  |
 | Parent    | parent@broadmindcollege.edu    | parent123   |
 
+If a demo login returns `401 Wrong ID/email or password`, verify that the API is
+connected to the database containing these seed users. For a fresh local setup,
+run `npm run seed` from `backend`, or import `schema.sql` followed by
+`seed_data.sql` as described above. Seeding replaces portal records, so back up
+any database you need to keep before running it. A frontend pointed at a
+different API or an unseeded database will not have these demo accounts.
+
+Teachers can use **Onboard staff & parents** in their portal to create teacher
+accounts and parent accounts linked to students in their classes. New accounts
+are returned with a first-login password to share with the account holder.
+Principals can create and edit current-term fee items from **Fees & receipts**
+in the principal portal.
+
 ## About the schema
 
 It maps the portal's application data model into normalized tables:

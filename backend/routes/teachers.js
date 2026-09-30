@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { SCHOOL_CODE, safeUser } = require('../utils/helpers');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 const DEFAULT_PASSWORD = 'teacher123';
 
@@ -18,26 +18,36 @@ function withClasses(data, teacher) {
 
 // GET /api/teachers
 router.get('/', (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'You do not have access to this' });
+  }
   const data = db.read();
   const list = data.users.filter((u) => u.role === 'teacher').map((t) => withClasses(data, t));
   res.json(list);
 });
 
 // POST /api/teachers  – add a teacher
-router.post('/', (req, res) => {
+router.post('/', requireRole('admin', 'teacher'), (req, res) => {
   const { name, email, phone, qualification, subjects } = req.body;
-  if (!name || !email) return res.status(400).json({ message: 'Name and email are required' });
+  if (typeof name !== 'string' || !name.trim() || typeof email !== 'string' || !email.trim()) {
+    return res.status(400).json({ message: 'Name and email are required' });
+  }
 
   const data = db.read();
-  if (data.users.some((u) => (u.email || '').toLowerCase() === email.toLowerCase())) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (data.users.some((u) => (u.email || '').trim().toLowerCase() === normalizedEmail)) {
     return res.status(409).json({ message: 'That email is already used by another account' });
   }
 
-  const count = data.users.filter((u) => u.role === 'teacher').length + 1;
+  let count = data.users.filter((u) => u.role === 'teacher').length + 1;
+  let schoolId;
+  do {
+    schoolId = `${SCHOOL_CODE}/TCH/${String(count++).padStart(3, '0')}`;
+  } while (data.users.some((u) => u.schoolId === schoolId));
   const teacher = {
     id: db.nextId(data.users),
     role: 'teacher',
-    schoolId: `${SCHOOL_CODE}/TCH/${String(count).padStart(3, '0')}`,
+    schoolId,
     name: name.trim(),
     email: email.trim(),
     phone: phone || '',
@@ -59,7 +69,7 @@ router.post('/', (req, res) => {
 });
 
 // POST /api/teachers/bulk  { rows: [{ name, email, phone, qualification }] }
-router.post('/bulk', (req, res) => {
+router.post('/bulk', requireRole('admin', 'teacher'), (req, res) => {
   const { rows } = req.body;
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ message: 'Add at least one row' });
@@ -112,6 +122,9 @@ router.post('/bulk', (req, res) => {
 
 // DELETE /api/teachers/:id
 router.delete('/:id', (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'You do not have access to this' });
+  }
   const data = db.read();
   const id = Number(req.params.id);
   if (!data.users.some((u) => u.id === id && u.role === 'teacher')) {

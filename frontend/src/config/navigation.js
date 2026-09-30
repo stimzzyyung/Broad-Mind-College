@@ -55,6 +55,7 @@ export const navigation = {
       title: 'Students & Classes',
       items: [
         { label: 'Register student', to: '/teacher/register-student', icon: UserPlus },
+        { label: 'Onboard staff & parents', to: '/teacher/onboard-users', icon: Users },
         { label: 'Students', to: '/teacher/students', icon: GraduationCap },
         { label: 'Classes', to: '/teacher/classes', icon: School },
       ],

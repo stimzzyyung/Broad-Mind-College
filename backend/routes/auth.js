@@ -11,17 +11,18 @@ const router = express.Router();
 // "identifier" can be the school ID (e.g. CVC/26/001) or an email address
 router.post('/login', (req, res) => {
   const { identifier, password, role } = req.body;
-  if (!identifier || !password) {
+  if (typeof identifier !== 'string' || !identifier.trim() || typeof password !== 'string' || !password) {
     return res.status(400).json({ message: 'Enter your ID or email and your password' });
   }
 
   const data = db.read();
   const id = identifier.trim().toLowerCase();
-  const user = data.users.find(
+  const matchingUsers = data.users.filter(
     (u) => (u.email || '').toLowerCase() === id || (u.schoolId || '').toLowerCase() === id
   );
+  const user = matchingUsers.find((candidate) => bcrypt.compareSync(password, candidate.password));
 
-  if (!user || !bcrypt.compareSync(password, user.password)) {
+  if (!user) {
     return res.status(401).json({ message: 'Wrong ID/email or password' });
   }
   if (role && user.role !== role) {
