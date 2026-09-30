@@ -204,6 +204,28 @@ module.exports = seed;
 
 // Lets you run "node data/seed.js" directly
 if (require.main === module) {
-  seed();
-  console.log('Sample data created in data/db.json');
+  const db = require('./db');
+
+  (async () => {
+    try {
+      console.log('Creating sample school data...');
+
+      const data = seed();
+
+      console.log('Connecting to MySQL...');
+      await db.initialize({ allowEmpty: true });
+
+      console.log('Seeding MySQL database...');
+      await db.seedDatabase(data);
+
+      console.log('MySQL database seeded successfully.');
+
+      await db.close();
+
+      console.log('Seed process completed.');
+    } catch (error) {
+      console.error('Seed failed:', error);
+      process.exitCode = 1;
+    }
+  })();
 }
