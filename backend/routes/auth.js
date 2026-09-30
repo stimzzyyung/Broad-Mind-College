@@ -6,6 +6,7 @@ const { SECRET, requireAuth } = require('../middleware/auth');
 const { safeUser } = require('../utils/helpers');
 
 const router = express.Router();
+const normalizeIdentifier = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 
 // POST /api/auth/login   { identifier, password, role }
 // "identifier" can be the school ID (e.g. CVC/26/001) or an email address
@@ -16,9 +17,9 @@ router.post('/login', (req, res) => {
   }
 
   const data = db.read();
-  const id = identifier.trim().toLowerCase();
+  const id = normalizeIdentifier(identifier);
   const matchingUsers = data.users.filter(
-    (u) => (u.email || '').toLowerCase() === id || (u.schoolId || '').toLowerCase() === id
+    (u) => normalizeIdentifier(u.email) === id || normalizeIdentifier(u.schoolId) === id
   );
   const user = matchingUsers.find((candidate) => bcrypt.compareSync(password, candidate.password));
 
