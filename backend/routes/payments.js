@@ -12,6 +12,7 @@ router.use(requireAuth);
 // The PDF's built-in font cannot draw currency symbols, so the receipt uses the code instead
 const CURRENCY = 'NGN';
 const money = (n) => `${CURRENCY} ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+const TRANSFER_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{4,62}[A-Za-z0-9]$/;
 
 // Adds student name, class and fee title to a payment
 function describe(data, payment) {
@@ -322,12 +323,16 @@ router.post('/bank-transfer', requireRole('parent'), (req, res) => {
   const status = feeStatus(data, child.id).find((item) => item.id === Number(feeId));
   const amt = Number(amount);
   if (!status || !amt || amt <= 0 || amt > status.balance) return res.status(400).json({ message: 'Enter a valid amount for this fee' });
-  if (!String(reference || '').trim()) return res.status(400).json({ message: 'Enter your bank transfer reference' });
-  if (data.payments.some((payment) => payment.reference === String(reference).trim())) {
+  const transferReference = typeof reference === 'string' ? reference.trim() : '';
+  if (!transferReference) return res.status(400).json({ message: 'Enter your bank transfer reference' });
+  if (!TRANSFER_REFERENCE_PATTERN.test(transferReference)) {
+    return res.status(400).json({ message: 'Enter a valid transfer reference (6-64 characters; letters, numbers, spaces, and . _ / - only)' });
+  }
+  if (data.payments.some((payment) => payment.reference === transferReference)) {
     return res.status(409).json({ message: 'That transfer reference has already been submitted' });
   }
 
-  const result = createPayment(data, child.id, feeId, amt, 'Bank transfer', { status: 'pending', reference: String(reference).trim() });
+  const result = createPayment(data, child.id, feeId, amt, 'Bank transfer', { status: 'pending', reference: transferReference });
   if (result.error) return res.status(400).json({ message: result.error });
   const receipt = notifyPayment(data, result.payment, null, 'Bank transfer awaiting confirmation');
   db.write(data);

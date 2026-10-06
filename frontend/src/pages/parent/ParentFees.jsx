@@ -201,9 +201,9 @@ export default function ParentFees() {
                   </div>
                   <div className="field">
                     <label htmlFor="transfer-reference">Transfer reference</label>
-                    <input id="transfer-reference" className="input" value={transferReference} onChange={(e) => setTransferReference(e.target.value)} placeholder="e.g. TRF123456" required />
+                    <input id="transfer-reference" className="input" value={transferReference} onChange={(e) => setTransferReference(e.target.value)} placeholder="e.g. TRF123456" minLength={6} maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9 ._/-]{4,62}[A-Za-z0-9]" title="Use 6-64 characters: letters, numbers, spaces, and . _ / -" required />
                   </div>
-                  <p className="hint">After transferring, submit the reference above. Your balance will update after the school confirms the transfer.</p>
+                  <p className="hint">Use the reference from your bank receipt (6-64 characters). This format check cannot verify the transfer itself; your balance updates after the school confirms receipt.</p>
                 </>
               )}
               {payError && <div className="error-note" role="alert">{payError}</div>}
