@@ -16,27 +16,31 @@ export default function ParentFees() {
   const { data, loading, error, reload } = useFetch('/payments/children');
   const [params, setParams] = useSearchParams();
   const [payFee, setPayFee] = useState(null); // { child, fee }
-  const [method, setMethod] = useState('Korapay');
+  const [method, setMethod] = useState('Paystack');
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState('');
   const [transferReference, setTransferReference] = useState('');
-  const korapayReference = params.get('reference');
+  const paystackReference = params.get('reference') || params.get('trxref');
 
   useEffect(() => {
-    if (!korapayReference) return;
+    if (!paystackReference) return;
     let cancelled = false;
-    api.get(`/payments/korapay/verify/${encodeURIComponent(korapayReference)}`)
+    api.get(`/payments/paystack/verify/${encodeURIComponent(paystackReference)}`)
       .then(() => {
         if (cancelled) return;
-        toast.success('Korapay payment confirmed');
-        setParams((next) => { next.delete('reference'); return next; }, { replace: true });
+        toast.success('Paystack payment confirmed');
+        setParams((next) => {
+          next.delete('reference');
+          next.delete('trxref');
+          return next;
+        }, { replace: true });
         reload();
       })
       .catch((err) => !cancelled && toast.error(err.message))
       .finally(() => { cancelled = true; });
     return () => { cancelled = true; };
-  }, [korapayReference, reload, setParams, toast]);
+  }, [paystackReference, reload, setParams, toast]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
@@ -44,7 +48,7 @@ export default function ParentFees() {
   function openPay(child, fee) {
     setPayFee({ child, fee });
     setAmount(String(fee.balance));
-    setMethod(data.paymentOptions.korapayConfigured ? 'Korapay' : 'Bank transfer');
+    setMethod(data.paymentOptions?.paystackConfigured ? 'Paystack' : 'Bank transfer');
     setTransferReference('');
     setPayError('');
   }
@@ -54,8 +58,8 @@ export default function ParentFees() {
     setPayError('');
     setBusy(true);
     try {
-      if (method === 'Korapay') {
-        const result = await api.post('/payments/korapay/initialize', {
+      if (method === 'Paystack') {
+        const result = await api.post('/payments/paystack/initialize', {
           studentId: payFee.child.id,
           feeId: payFee.fee.id,
           amount: Number(amount),
@@ -190,31 +194,31 @@ export default function ParentFees() {
               <div className="field">
                 <label htmlFor="method">Payment method</label>
                 <select id="method" className="select" value={method} onChange={(e) => setMethod(e.target.value)}>
-                  {data.paymentOptions.korapayConfigured && <option>Korapay</option>}
+                  {data.paymentOptions?.paystackConfigured && <option>Paystack</option>}
                   <option>Bank transfer</option>
                 </select>
               </div>
-              {method === 'Korapay' && <p className="hint">You will be redirected to Korapay to pay securely with your preferred method.</p>}
+              {method === 'Paystack' && <p className="hint">You will be redirected to Paystack to pay securely with your card, bank transfer, or USSD.</p>}
               {method === 'Bank transfer' && (
                 <>
                   <div className="success-panel">
                     <div className="strong">Bank transfer details</div>
-                    <div className="small muted">Bank: {data.paymentOptions.bank.name || 'Contact the school office'}</div>
-                    <div className="small muted">Account name: {data.paymentOptions.bank.accountName || 'Not configured'}</div>
-                    <div className="small muted">Account number: {data.paymentOptions.bank.accountNumber || 'Not configured'}</div>
-                    {data.paymentOptions.bank.code && <div className="small muted">Bank code: {data.paymentOptions.bank.code}</div>}
+                    <div className="small muted">Bank: {data.paymentOptions?.bank?.name || 'Access Bank'}</div>
+                    <div className="small muted">Account name: {data.paymentOptions?.bank?.accountName || 'Kolawole Praise'}</div>
+                    <div className="small muted">Account number: {data.paymentOptions?.bank?.accountNumber || '1895012990'}</div>
+                    {data.paymentOptions?.bank?.code && <div className="small muted">Bank code: {data.paymentOptions.bank.code}</div>}
                   </div>
                   <div className="field">
                     <label htmlFor="transfer-reference">Transfer reference</label>
                     <input id="transfer-reference" className="input" value={transferReference} onChange={(e) => setTransferReference(e.target.value)} placeholder="e.g. TRF123456" minLength={6} maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9 ._/-]{4,62}[A-Za-z0-9]" title="Use 6-64 characters: letters, numbers, spaces, and . _ / -" required />
                   </div>
-                  <p className="hint">Use the reference from your bank receipt (6-64 characters). This format check cannot verify the transfer itself; your balance updates after the school confirms receipt.</p>
+                  <p className="hint">Use the reference/session ID from your bank receipt (6-64 characters). Your balance updates after the school confirms receipt.</p>
                 </>
               )}
               {payError && <div className="error-note" role="alert">{payError}</div>}
               <div className="form-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setPayFee(null)}>Cancel</button>
-                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Processing…' : method === 'Korapay' ? 'Continue to Korapay' : 'Submit transfer'}</button>
+                <button className="btn btn-primary" disabled={busy}><Wallet size={17} />{busy ? 'Processing…' : method === 'Paystack' ? 'Continue to Paystack' : 'Submit transfer'}</button>
               </div>
             </form>
           </div>

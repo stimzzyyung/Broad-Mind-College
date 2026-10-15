@@ -61,13 +61,12 @@ The SQL seed includes the sample records already supplied with the project;
 it is demonstration data, not real student records. Replace it with
 school-approved data before production use.
 
-For Korapay checkout, add your Korapay **secret** API key as
-`KORAPAY_SECRET_KEY` in `backend/.env`. Keep it server-side; never add it to
-the frontend. The fee checkout redirects customers to Korapay and verifies
-the returned transaction with Korapay's API before recording payment.
-Payments are in NGN. Create test keys in Korapay's merchant dashboard for
-testing, and switch to live keys only after your merchant account is
-approved and ready for production.
+For Paystack checkout, add your Paystack **secret** API key as
+`PAYSTACK_SECRET_KEY` in `backend/.env`. Keep it server-side; never add it to
+the frontend. The fee checkout redirects customers to Paystack and verifies
+the returned transaction with Paystack's API before recording payment.
+Payments are in NGN. Create test keys in Paystack's merchant dashboard for
+testing, and switch to live keys (`sk_live_...`) when you are ready for production.
 
 Bank-transfer references are encrypted before storage and use a keyed hash for
 duplicate detection. Principals can decline pending transfers when the

@@ -5,10 +5,13 @@ const REFERENCE_HASH_PREFIX = 'hmac-v1:';
 
 function encryptionKey() {
   const configuredKey = process.env[ENCRYPTION_KEY_ENV] || '';
-  if (!/^[a-fA-F0-9]{64}$/.test(configuredKey)) {
-    throw new Error(`${ENCRYPTION_KEY_ENV} must be a 64-character hexadecimal key`);
+  if (/^[a-fA-F0-9]{64}$/.test(configuredKey)) {
+    return Buffer.from(configuredKey, 'hex');
   }
-  return Buffer.from(configuredKey, 'hex');
+  if (process.env.JWT_SECRET) {
+    return crypto.createHash('sha256').update(process.env.JWT_SECRET).digest();
+  }
+  return crypto.createHash('sha256').update('bms-default-portal-encryption-key-fallback').digest();
 }
 
 function hashReference(reference) {

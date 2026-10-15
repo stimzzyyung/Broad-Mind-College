@@ -74,6 +74,24 @@ function createPayment(data, studentId, feeId, amount, method, options = {}) {
   return { payment };
 }
 
+async function paystackRequest(path, options = {}) {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) throw new Error('Paystack is not configured on the server');
+  const response = await fetch(`https://api.paystack.co${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.status) {
+    throw new Error(body.message || `Paystack request failed with status ${response.status}`);
+  }
+  return body.data;
+}
+
 async function korapayRequest(path, options = {}) {
   if (!process.env.KORAPAY_SECRET_KEY) throw new Error('Korapay is not configured on the server');
   const response = await fetch(`https://api.korapay.com/merchant/api/v1${path}`, {
@@ -214,7 +232,8 @@ router.get('/children', requireRole('parent'), (req, res) => {
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   res.json({ settings: data.settings, children, payments, paymentOptions: {
-    korapayConfigured: Boolean(process.env.KORAPAY_SECRET_KEY),
+    paystackConfigured: Boolean(process.env.PAYSTACK_SECRET_KEY),
+    korapayConfigured: Boolean(process.env.PAYSTACK_SECRET_KEY || process.env.KORAPAY_SECRET_KEY),
     bank: {
       name: process.env.SCHOOL_BANK_NAME || '',
       accountName: process.env.SCHOOL_BANK_ACCOUNT_NAME || '',
@@ -224,23 +243,20 @@ router.get('/children', requireRole('parent'), (req, res) => {
   } });
 });
 
-// POST /api/payments/korapay/initialize { studentId, feeId, amount }
-router.post('/korapay/initialize', requireRole('parent', 'student'), async (req, res) => {
-  const { studentId, feeId, amount } = req.body;
+// POST /api/payments/paystack/initialize { studentId, feeId, amount, email }
+router.post('/paystack/initialize', requireRole('parent'), async (req, res) => {
+  const { studentId, feeId, amount, email } = req.body;
   const data = db.read();
-  const targetStudentId = studentId ?? req.user.id;
-  const student = req.user.role === 'parent'
-    ? parentChild(data, req.user.id, targetStudentId)
-    : data.users.find((user) => user.id === req.user.id && user.role === 'student');
-  if (!student || (req.user.role === 'student' && Number(targetStudentId) !== student.id)) {
-    return res.status(403).json({ message: 'You cannot pay fees for this student' });
+  const student = parentChild(data, req.user.id, studentId);
+  if (!student) {
+    return res.status(403).json({ message: 'That is not one of your registered children' });
   }
   const fee = data.fees.find((item) => item.id === Number(feeId));
   const status = fee && feeStatus(data, student.id).find((item) => item.id === fee.id);
   const amt = Number(amount);
   if (!status || !amt || amt <= 0 || amt > status.balance) return res.status(400).json({ message: 'Enter a valid amount for this fee' });
   const payer = data.users.find((u) => u.id === req.user.id);
-  const payerEmail = String(payer.email || req.body.email || '').trim();
+  const payerEmail = String(payer?.email || email || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
     return res.status(400).json({ message: 'Enter a valid email address for your payment receipt' });
   }
@@ -249,75 +265,73 @@ router.post('/korapay/initialize', requireRole('parent', 'student'), async (req,
     const reference = `BMS-${randomUUID()}`;
     const portal = req.user.role === 'parent' ? 'parent' : 'student';
     const redirectUrl = new URL(`/${portal}/fees`, process.env.CLIENT_URL || 'http://localhost:5173');
-    const transaction = await korapayRequest('/charges/initialize', {
+    const amountInKobo = Math.round(amt * 100);
+    const transaction = await paystackRequest('/transaction/initialize', {
       method: 'POST',
       body: JSON.stringify({
-        amount: Math.round(amt),
+        amount: amountInKobo,
         currency: 'NGN',
         reference,
-        redirect_url: redirectUrl.toString(),
-        narration: `${fee.title} for ${student.name} - Broad-Mind College`,
-        customer: { name: payer.name, email: payerEmail },
+        callback_url: redirectUrl.toString(),
+        email: payerEmail,
         metadata: {
           studentId: String(student.id),
           feeId: String(fee.id),
           payerId: String(req.user.id),
           expectedAmount: String(Math.round(amt)),
+          studentName: student.name,
+          feeTitle: fee.title,
         },
       }),
     });
-    if (!transaction.checkout_url || !transaction.reference) {
-      throw new Error('Korapay did not return a checkout URL and reference');
+    if (!transaction.authorization_url || !transaction.reference) {
+      throw new Error('Paystack did not return an authorization URL and reference');
     }
-    res.json({ checkoutUrl: transaction.checkout_url, reference: transaction.reference });
+    res.json({ checkoutUrl: transaction.authorization_url, reference: transaction.reference });
   } catch (err) {
     res.status(502).json({ message: err.message });
   }
 });
 
-// GET /api/payments/korapay/verify/:reference
-router.get('/korapay/verify/:reference', requireRole('parent', 'student'), async (req, res) => {
+// Backward compatibility alias for Korapay initialize
+router.post('/korapay/initialize', (req, res, next) => {
+  req.url = '/paystack/initialize';
+  router.handle(req, res, next);
+});
+
+// GET /api/payments/paystack/verify/:reference
+router.get('/paystack/verify/:reference', requireRole('parent'), async (req, res) => {
   try {
-    const transaction = await korapayRequest(`/charges/${encodeURIComponent(req.params.reference)}`);
-    if (
-      transaction.status !== 'success' ||
-      (transaction.transaction_status && transaction.transaction_status !== 'success')
-    ) {
-      return res.status(400).json({ message: 'Korapay has not confirmed this payment' });
+    const transaction = await paystackRequest(`/transaction/verify/${encodeURIComponent(req.params.reference)}`);
+    if (transaction.status !== 'success') {
+      return res.status(400).json({ message: 'Paystack has not confirmed this payment' });
     }
     if (transaction.currency !== 'NGN') {
       return res.status(400).json({ message: 'The confirmed payment currency is not NGN' });
     }
     const metadata = transaction.metadata || {};
     const data = db.read();
-    const student = req.user.role === 'parent'
-      ? parentChild(data, req.user.id, Number(metadata.studentId))
-      : data.users.find((user) =>
-        user.id === req.user.id &&
-        user.role === 'student' &&
-        user.id === Number(metadata.studentId)
-      );
+    const student = parentChild(data, req.user.id, Number(metadata.studentId));
     const fee = data.fees.find((item) => item.id === Number(metadata.feeId));
     if (!student || Number(metadata.payerId) !== req.user.id || !fee) {
       return res.status(403).json({ message: 'Payment ownership could not be verified' });
     }
-    const paidAmount = Number(transaction.amount);
+    const paidAmount = Number(transaction.amount) / 100;
     if (
       !Number.isFinite(paidAmount) ||
       paidAmount <= 0 ||
-      paidAmount !== Number(metadata.expectedAmount) ||
-      (transaction.amount_expected !== undefined && paidAmount !== Number(transaction.amount_expected))
+      paidAmount !== Number(metadata.expectedAmount)
     ) {
-      return res.status(400).json({ message: 'Korapay has not confirmed the expected payment amount' });
+      return res.status(400).json({ message: 'Paystack has not confirmed the expected payment amount' });
     }
-    const paymentReference = transaction.payment_reference || transaction.reference;
+    const paymentReference = transaction.reference;
     if (paymentReference !== req.params.reference) {
       return res.status(400).json({ message: 'The transaction reference could not be verified' });
     }
     const existing = data.payments.find((payment) => payment.reference === paymentReference);
     if (existing) return res.json(describe(data, existing));
 
-    const result = createPayment(data, student.id, fee.id, paidAmount, 'Korapay', { reference: paymentReference });
+    const result = createPayment(data, student.id, fee.id, paidAmount, 'Paystack', { reference: paymentReference });
     if (result.error) return res.status(400).json({ message: result.error });
     const receipt = notifyPayment(data, result.payment, student);
     db.write(data);
@@ -327,13 +341,19 @@ router.get('/korapay/verify/:reference', requireRole('parent', 'student'), async
   }
 });
 
+// Backward compatibility alias for Korapay verify
+router.get('/korapay/verify/:reference', (req, res, next) => {
+  req.url = `/paystack/verify/${encodeURIComponent(req.params.reference)}`;
+  router.handle(req, res, next);
+});
+
 // POST /api/payments/bank-transfer { studentId, feeId, amount, reference }
 router.post('/bank-transfer', requireRole('parent'), (req, res) => {
   const { studentId, feeId, amount, reference } = req.body;
   const data = db.read();
-  const child = parentChild(data, req.user.id, studentId);
-  if (!child) return res.status(403).json({ message: 'That is not one of your children' });
-  const status = feeStatus(data, child.id).find((item) => item.id === Number(feeId));
+  const student = parentChild(data, req.user.id, studentId);
+  if (!student) return res.status(403).json({ message: 'That is not one of your registered children' });
+  const status = feeStatus(data, student.id).find((item) => item.id === Number(feeId));
   const amt = Number(amount);
   if (!status || !amt || amt <= 0 || amt > status.balance) return res.status(400).json({ message: 'Enter a valid amount for this fee' });
   const transferReference = typeof reference === 'string' ? reference.trim() : '';
@@ -355,7 +375,7 @@ router.post('/bank-transfer', requireRole('parent'), (req, res) => {
     return res.status(409).json({ message: 'That transfer reference has already been submitted' });
   }
 
-  const result = createPayment(data, child.id, feeId, amt, 'Bank transfer', {
+  const result = createPayment(data, student.id, feeId, amt, 'Bank transfer', {
     status: 'pending',
     reference: protectedReference.reference,
     encryptedReference: protectedReference.encryptedReference,
@@ -433,7 +453,16 @@ router.get('/my', requireRole('student'), (req, res) => {
     settings: data.settings,
     fees,
     payments,
-    paymentOptions: { korapayConfigured: Boolean(process.env.KORAPAY_SECRET_KEY) },
+    paymentOptions: {
+      paystackConfigured: Boolean(process.env.PAYSTACK_SECRET_KEY),
+      korapayConfigured: Boolean(process.env.PAYSTACK_SECRET_KEY || process.env.KORAPAY_SECRET_KEY),
+      bank: {
+        name: process.env.SCHOOL_BANK_NAME || '',
+        accountName: process.env.SCHOOL_BANK_ACCOUNT_NAME || '',
+        accountNumber: process.env.SCHOOL_BANK_ACCOUNT_NUMBER || '',
+        code: process.env.SCHOOL_BANK_CODE || '',
+      },
+    },
     totals: { expected, paid, balance: expected - paid },
   });
 });

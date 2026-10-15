@@ -30,7 +30,7 @@ export default function StudentHome() {
           <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
             <Link to="/exams" className="btn btn-brass"><Clock size={17} />My CBT examinations</Link>
             <Link to="/exam-schedule" className="btn btn-on-dark"><Calendar size={17} />Exam schedule</Link>
-            <Link to="/student/fees" className="btn btn-on-dark"><Wallet size={17} />Pay fees</Link>
+            <Link to="/student/fees" className="btn btn-on-dark"><Wallet size={17} />Fees & receipts</Link>
           </div>
           <TodayStrip day={data.today.day} isToday={data.today.isToday} periods={data.today.lessons} />
         </div>
