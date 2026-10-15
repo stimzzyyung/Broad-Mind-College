@@ -4,6 +4,7 @@ const PDFDocument = require('pdfkit');
 const db = require('../data/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { feeStatus } = require('../utils/helpers');
+const { encryptReference, paymentReference } = require('../utils/paymentReference');
 const { notifyUsers } = require('../data/notify');
 
 const router = express.Router();
@@ -16,16 +17,23 @@ const TRANSFER_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{4,62}[A-Za-z0-9
 
 // Adds student name, class and fee title to a payment
 function describe(data, payment) {
+  const publicPayment = { ...payment };
+  delete publicPayment.reference;
+  delete publicPayment.encryptedReference;
   const student = data.users.find((u) => u.id === payment.studentId);
   const cls = student && data.classes.find((c) => c.id === student.classId);
   const fee = data.fees.find((f) => f.id === payment.feeId);
   return {
-    ...payment,
+    ...publicPayment,
     studentName: student ? student.name : 'Removed student',
     schoolId: student ? student.schoolId : '',
     className: cls ? cls.name : '',
     feeTitle: fee ? fee.title : 'Fee',
   };
+}
+
+function describeForAdmin(data, payment) {
+  return { ...describe(data, payment), reference: paymentReference(payment) };
 }
 
 // Shared by "student pays" and "admin records a payment"
@@ -52,6 +60,7 @@ function createPayment(data, studentId, feeId, amount, method, options = {}) {
     method,
     status,
     reference: options.reference || `BMS-${Date.now().toString(36).toUpperCase()}`,
+    ...(options.encryptedReference ? { encryptedReference: options.encryptedReference } : {}),
     receiptNo: status === 'success' ? `RCT-${String(id).padStart(5, '0')}` : '',
     term: fee.term,
     session: fee.session,
@@ -328,11 +337,25 @@ router.post('/bank-transfer', requireRole('parent'), (req, res) => {
   if (!TRANSFER_REFERENCE_PATTERN.test(transferReference)) {
     return res.status(400).json({ message: 'Enter a valid transfer reference (6-64 characters; letters, numbers, spaces, and . _ / - only)' });
   }
-  if (data.payments.some((payment) => payment.reference === transferReference)) {
+  let protectedReference;
+  try {
+    protectedReference = encryptReference(transferReference);
+  } catch (err) {
+    return res.status(503).json({ message: err.message });
+  }
+  const transferReferenceHash = protectedReference.reference;
+  if (data.payments.some((payment) =>
+    payment.reference === transferReference ||
+    payment.reference === transferReferenceHash
+  )) {
     return res.status(409).json({ message: 'That transfer reference has already been submitted' });
   }
 
-  const result = createPayment(data, child.id, feeId, amt, 'Bank transfer', { status: 'pending', reference: transferReference });
+  const result = createPayment(data, child.id, feeId, amt, 'Bank transfer', {
+    status: 'pending',
+    reference: protectedReference.reference,
+    encryptedReference: protectedReference.encryptedReference,
+  });
   if (result.error) return res.status(400).json({ message: result.error });
   const receipt = notifyPayment(data, result.payment, null, 'Bank transfer awaiting confirmation');
   db.write(data);
@@ -394,7 +417,7 @@ router.post('/pay', requireRole('student'), (req, res) => {
 router.get('/', requireRole('admin'), (req, res) => {
   const data = db.read();
   const { classId, search } = req.query;
-  let list = data.payments.map((p) => describe(data, p));
+  let list = data.payments.map((p) => describeForAdmin(data, p));
 
   if (classId) {
     const ids = data.users.filter((u) => u.classId === Number(classId)).map((u) => u.id);
@@ -510,7 +533,7 @@ router.get('/:id/receipt', (req, res) => {
     ['Class', p.className],
     ['Payment for', `${p.feeTitle} (${p.term}, ${p.session})`],
     ['Method', p.method],
-    ['Reference', p.reference],
+    ...(req.user.role === 'admin' ? [['Reference', paymentReference(payment)]] : []),
     ['Date', new Date(p.date).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' })],
   ];
   let y = 160;

@@ -69,6 +69,21 @@ Payments are in NGN. Create test keys in Korapay's merchant dashboard for
 testing, and switch to live keys only after your merchant account is
 approved and ready for production.
 
+Bank-transfer references are encrypted before storage and use a keyed hash for
+duplicate detection. Set `PAYMENT_REFERENCE_ENCRYPTION_KEY` in `backend/.env`
+to a securely stored 32-byte key encoded as 64 hexadecimal characters. Generate
+one with:
+
+```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Keep this key backed up and private; losing it makes encrypted references
+unreadable. Before deploying this version to an existing database, apply
+`database/migrations/20261006_encrypt_payment_references.sql`. Existing
+plaintext references continue to be readable by admins; newly submitted
+references are returned in full only in the admin payments list.
+
 ## Demo logins
 
 The seeded passwords are real bcrypt hashes for these plain-text passwords,
