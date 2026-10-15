@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Plus, Search, Trash2, Pencil, Wallet, Banknote, TrendingUp, AlertCircle, Check } from 'lucide-react';
+import { Download, Plus, Search, Trash2, Pencil, Wallet, Banknote, TrendingUp, AlertCircle, Check, X } from 'lucide-react';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -21,6 +21,8 @@ export default function AdminFees() {
   const [search, setSearch] = useState('');
   const [recording, setRecording] = useState(null); // the student we are recording a payment for
   const [entry, setEntry] = useState({ feeId: '', amount: '', method: 'Bank transfer' });
+  const [declining, setDeclining] = useState(null);
+  const [declineReason, setDeclineReason] = useState('reference_unrecognized');
   const [newFee, setNewFee] = useState({ title: '', amount: '' });
   const [editingFee, setEditingFee] = useState(null); // { id, title, amount }
 
@@ -50,6 +52,18 @@ export default function AdminFees() {
     try {
       await api.post(`/payments/confirm/${payment.id}`);
       toast.success('Bank transfer confirmed');
+      reloadAll();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  }
+
+  async function declineTransfer(e) {
+    e.preventDefault();
+    try {
+      await api.post(`/payments/decline/${declining.id}`, { reason: declineReason });
+      toast.success('Bank transfer declined');
+      setDeclining(null);
       reloadAll();
     } catch (e) {
       toast.error(e.message);
@@ -164,10 +178,22 @@ export default function AdminFees() {
                     <td>{p.feeTitle}</td>
                     <td className="num">{money(p.amount)}</td>
                     <td>{p.method}</td>
-                    <td><Badge tone={p.status === 'success' ? 'ok' : 'warn'}>{p.status === 'success' ? 'Confirmed' : 'Pending'}</Badge></td>
+                    <td>
+                      <Badge tone={p.status === 'success' ? 'ok' : p.status === 'declined' ? 'danger' : 'warn'}>
+                        {p.status === 'success' ? 'Confirmed' : p.status === 'declined' ? 'Declined' : 'Pending'}
+                      </Badge>
+                      {p.declineReason && <div className="sub small muted">{p.declineReason}</div>}
+                    </td>
                     <td className="nowrap">{formatDate(p.date)}</td>
                     <td><div className="actions">
-                      {p.status === 'pending' ? <button className="btn btn-primary btn-sm" onClick={() => confirmTransfer(p)}><Check size={15} />Confirm</button> : <button className="btn btn-outline btn-sm" onClick={() => downloadReceipt(p)}><Download size={15} />Receipt</button>}
+                      {p.status === 'pending' ? (
+                        <>
+                          <button className="btn btn-primary btn-sm" onClick={() => confirmTransfer(p)}><Check size={15} />Confirm</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => { setDeclining(p); setDeclineReason('reference_unrecognized'); }}><X size={15} />Decline</button>
+                        </>
+                      ) : p.status === 'success' ? (
+                        <button className="btn btn-outline btn-sm" onClick={() => downloadReceipt(p)}><Download size={15} />Receipt</button>
+                      ) : null}
                     </div></td>
                   </tr>
                 ))}
@@ -280,6 +306,25 @@ export default function AdminFees() {
             <div className="form-actions" style={{ marginTop: 4 }}>
               <button type="button" className="btn btn-ghost" onClick={() => setRecording(null)}>Cancel</button>
               <button className="btn btn-primary">Save payment</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {declining && (
+        <Modal title={`Decline transfer for ${declining.studentName}`} onClose={() => setDeclining(null)}>
+          <form onSubmit={declineTransfer} className="stack" style={{ gap: 14 }}>
+            <p className="muted">Decline only if the transfer reference cannot be verified or the funds have not been received.</p>
+            <div className="field">
+              <label htmlFor="decline-reason">Reason</label>
+              <select id="decline-reason" className="select" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)}>
+                <option value="reference_unrecognized">Transfer reference could not be verified</option>
+                <option value="funds_not_received">Transfer funds have not been received</option>
+              </select>
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setDeclining(null)}>Cancel</button>
+              <button className="btn btn-primary">Decline transfer</button>
             </div>
           </form>
         </Modal>

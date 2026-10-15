@@ -131,6 +131,7 @@ CREATE TABLE payments (
   amount      DECIMAL(12,2) NOT NULL,
   method      VARCHAR(30) NOT NULL,           -- Card / Bank transfer / USSD / Cash / POS
   status      VARCHAR(20) DEFAULT 'success',
+  decline_reason VARCHAR(100) NULL,
   reference   VARCHAR(100) UNIQUE,
   encrypted_reference VARCHAR(255) NULL,
   receipt_no  VARCHAR(50) UNIQUE,

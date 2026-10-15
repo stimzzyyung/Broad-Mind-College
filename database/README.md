@@ -70,7 +70,10 @@ testing, and switch to live keys only after your merchant account is
 approved and ready for production.
 
 Bank-transfer references are encrypted before storage and use a keyed hash for
-duplicate detection. Set `PAYMENT_REFERENCE_ENCRYPTION_KEY` in `backend/.env`
+duplicate detection. Principals can decline pending transfers when the
+reference cannot be verified or the funds have not been received; the reason
+is recorded and shown to the parent and student. Set
+`PAYMENT_REFERENCE_ENCRYPTION_KEY` in `backend/.env`
 to a securely stored 32-byte key encoded as 64 hexadecimal characters. Generate
 one with:
 
@@ -80,7 +83,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Keep this key backed up and private; losing it makes encrypted references
 unreadable. Before deploying this version to an existing database, apply
-`database/migrations/20261006_encrypt_payment_references.sql`. Existing
+`database/migrations/20261006_encrypt_payment_references.sql` and
+`database/migrations/20261006_add_payment_decline_reason.sql`. Existing
 plaintext references continue to be readable by admins; newly submitted
 references are returned in full only in the admin payments list.
 

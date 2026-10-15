@@ -14,6 +14,10 @@ router.use(requireAuth);
 const CURRENCY = 'NGN';
 const money = (n) => `${CURRENCY} ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 const TRANSFER_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{4,62}[A-Za-z0-9]$/;
+const DECLINE_REASONS = {
+  reference_unrecognized: 'Transfer reference could not be verified',
+  funds_not_received: 'Transfer funds have not been received',
+};
 
 // Adds student name, class and fee title to a payment
 function describe(data, payment) {
@@ -379,6 +383,34 @@ router.post('/confirm/:id', requireRole('admin'), (req, res) => {
   res.json(receipt);
 });
 
+// POST /api/payments/decline/:id { reason } – admin declines a bank transfer
+router.post('/decline/:id', requireRole('admin'), (req, res) => {
+  const reasonCode = req.body && req.body.reason;
+  const reason = Object.prototype.hasOwnProperty.call(DECLINE_REASONS, reasonCode)
+    ? DECLINE_REASONS[reasonCode]
+    : null;
+  if (!reason) return res.status(400).json({ message: 'Choose a valid reason for declining this transfer' });
+
+  const data = db.read();
+  const payment = data.payments.find((item) => item.id === Number(req.params.id) && item.status === 'pending');
+  if (!payment) return res.status(404).json({ message: 'Pending payment not found' });
+
+  payment.status = 'declined';
+  payment.declineReason = reason;
+  const student = data.users.find((user) => user.id === payment.studentId);
+  const receipt = describe(data, payment);
+  const recipients = [student && student.parentId, student && student.id].filter(Boolean);
+  notifyUsers(data, recipients, {
+    title: 'Bank transfer declined',
+    body: `Your transfer for ${receipt.feeTitle} was declined: ${reason}. Please contact the school if you believe this is an error.`,
+    type: 'payment',
+    link: '/fees',
+  });
+
+  db.write(data);
+  res.json(receipt);
+});
+
 // Retired demo endpoint. Use Korapay checkout or the confirmed bank-transfer flow.
 router.post('/pay-child', requireRole('parent'), (req, res) => {
   res.status(410).json({ message: 'Direct demo payments are disabled. Use Korapay checkout or bank transfer.' });
@@ -490,6 +522,7 @@ router.get('/:id/receipt', (req, res) => {
   const data = db.read();
   const payment = data.payments.find((p) => p.id === Number(req.params.id));
   if (!payment) return res.status(404).json({ message: 'Receipt not found' });
+  if (payment.status !== 'success') return res.status(400).json({ message: 'A receipt is available only for confirmed payments' });
   if (req.user.role === 'student' && payment.studentId !== req.user.id) {
     return res.status(403).json({ message: 'You can only download your own receipts' });
   }
@@ -504,7 +537,7 @@ router.get('/:id/receipt', (req, res) => {
   const p = describe(data, payment);
   const fee = data.fees.find((f) => f.id === payment.feeId);
   const paidSoFar = data.payments
-    .filter((x) => x.studentId === payment.studentId && x.feeId === payment.feeId && x.id <= payment.id)
+    .filter((x) => x.studentId === payment.studentId && x.feeId === payment.feeId && x.status === 'success' && x.id <= payment.id)
     .reduce((sum, x) => sum + x.amount, 0);
   const balance = fee ? Math.max(fee.amount - paidSoFar, 0) : 0;
   const school = data.settings;

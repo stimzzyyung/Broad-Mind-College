@@ -156,7 +156,12 @@ export default function ParentFees() {
                     <td>{p.feeTitle}</td>
                     <td className="num">{money(p.amount)}</td>
                     <td>{p.method}</td>
-                    <td><Badge tone={p.status === 'success' ? 'ok' : 'warn'}>{p.status === 'success' ? 'Confirmed' : 'Pending'}</Badge></td>
+                    <td>
+                      <Badge tone={p.status === 'success' ? 'ok' : p.status === 'declined' ? 'danger' : 'warn'}>
+                        {p.status === 'success' ? 'Confirmed' : p.status === 'declined' ? 'Declined' : 'Pending'}
+                      </Badge>
+                      {p.declineReason && <div className="sub small muted">{p.declineReason}</div>}
+                    </td>
                     <td>{formatDate(p.date)}</td>
                     <td className="right">
                       {p.status === 'success' && <button className="btn btn-ghost btn-sm" onClick={() => downloadReceipt(p)}><Download size={14} />Receipt</button>}
