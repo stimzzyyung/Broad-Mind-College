@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const { pool } = require('../data/mysql');
@@ -28,7 +30,39 @@ async function feeStatus(studentId, executor = pool) {
   });
 }
 
+let paymentColumnsChecked = false;
+async function ensurePaymentColumns(executor = pool) {
+  if (paymentColumnsChecked) return;
+  try {
+    const [cols] = await executor.execute(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'"
+    );
+    const existing = new Set(cols.map((c) => String(c.COLUMN_NAME || c.column_name || Object.values(c)[0])));
+    if (existing.size > 0) {
+      if (!existing.has('receipt_file')) {
+        await executor.execute('ALTER TABLE payments ADD COLUMN receipt_file VARCHAR(255) NULL');
+      }
+      if (!existing.has('receipt_mime')) {
+        await executor.execute('ALTER TABLE payments ADD COLUMN receipt_mime VARCHAR(100) NULL');
+      }
+      if (!existing.has('receipt_original_name')) {
+        await executor.execute('ALTER TABLE payments ADD COLUMN receipt_original_name VARCHAR(255) NULL');
+      }
+      if (!existing.has('caption')) {
+        await executor.execute('ALTER TABLE payments ADD COLUMN caption TEXT NULL');
+      }
+      if (!existing.has('rejection_reason')) {
+        await executor.execute('ALTER TABLE payments ADD COLUMN rejection_reason VARCHAR(255) NULL');
+      }
+      paymentColumnsChecked = true;
+    }
+  } catch (err) {
+    console.warn('Could not ensure payment columns:', err.message);
+  }
+}
+
 async function paymentView(paymentId, executor = pool) {
+  await ensurePaymentColumns(executor);
   const [rows] = await executor.execute(
     'SELECT p.*, u.name AS student_name, u.school_id, c.name AS class_name, f.title AS fee_title FROM payments p LEFT JOIN users u ON u.id = p.student_id LEFT JOIN classes c ON c.id = u.class_id LEFT JOIN fees f ON f.id = p.fee_id WHERE p.id = ? LIMIT 1',
     [paymentId]
@@ -38,6 +72,11 @@ async function paymentView(paymentId, executor = pool) {
   return {
     id: Number(row.id), studentId: Number(row.student_id), feeId: Number(row.fee_id), amount: Number(row.amount),
     method: row.method, status: row.status, reference: row.reference, receiptNo: row.receipt_no || '',
+    receiptFile: row.receipt_file || null,
+    receiptMime: row.receipt_mime || null,
+    receiptOriginalName: row.receipt_original_name || null,
+    caption: row.caption || '',
+    rejectionReason: row.rejection_reason || '',
     term: row.term, session: row.session, date: row.date,
     studentName: row.student_name || 'Removed student', schoolId: row.school_id || '',
     className: row.class_name || '', feeTitle: row.fee_title || 'Fee',
@@ -56,6 +95,7 @@ async function notifyUser(executor, userId, title, body, type = 'payment', link 
 }
 
 async function createPayment(executor, studentId, feeId, amount, method, options = {}) {
+  await ensurePaymentColumns(executor);
   const [feeRows] = await executor.execute('SELECT id, title, amount, term, session FROM fees WHERE id = ?', [Number(feeId)]);
   const fee = feeRows[0];
   if (!fee) return { error: 'Choose a fee to pay' };
@@ -71,8 +111,21 @@ async function createPayment(executor, studentId, feeId, amount, method, options
   const status = options.status || 'success';
   const reference = options.reference || `CVC-${Date.now().toString(36).toUpperCase()}`;
   const [result] = await executor.execute(
-    'INSERT INTO payments (student_id, fee_id, amount, method, status, reference, receipt_no, term, session) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)',
-    [studentId, Number(fee.id), numericAmount, method, status, reference, fee.term, fee.session]
+    'INSERT INTO payments (student_id, fee_id, amount, method, status, reference, receipt_no, term, session, receipt_file, receipt_mime, receipt_original_name, caption) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)',
+    [
+      studentId,
+      Number(fee.id),
+      numericAmount,
+      method,
+      status,
+      reference,
+      fee.term,
+      fee.session,
+      options.receiptFile || null,
+      options.receiptMime || null,
+      options.receiptOriginalName || null,
+      options.caption || null,
+    ]
   );
   if (status === 'success') {
     const receiptNo = `RCT-${String(result.insertId).padStart(5, '0')}`;
@@ -182,9 +235,20 @@ router.get('/children', requireRole('parent'), async (req, res, next) => {
       const fees = await feeStatus(Number(kid.id));
       const expected = fees.reduce((sum, fee) => sum + fee.amount, 0);
       const paid = fees.reduce((sum, fee) => sum + fee.paid, 0);
+      const [pendingRows] = await pool.execute('SELECT fee_id, amount FROM payments WHERE student_id = ? AND status = ?', [kid.id, 'pending']);
+      const feesWithPending = fees.map((fee) => {
+        const pendingAmount = pendingRows
+          .filter((p) => Number(p.fee_id) === Number(fee.id))
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+        return {
+          ...fee,
+          pendingAmount,
+          hasPending: pendingAmount > 0,
+        };
+      });
       return {
         id: Number(kid.id), name: kid.name, schoolId: kid.school_id, className: kid.class_name || 'Unassigned',
-        fees, totals: { expected, paid, balance: expected - paid },
+        fees: feesWithPending, totals: { expected, paid, balance: expected - paid },
       };
     }));
     const [payments] = await pool.execute(
@@ -258,30 +322,136 @@ router.get('/paystack/verify/:reference', requireRole('parent'), async (req, res
 });
 
 router.post('/bank-transfer', requireRole('parent'), async (req, res, next) => {
-  const { studentId, feeId, amount, reference } = req.body;
-  if (!String(reference || '').trim()) return res.status(400).json({ message: 'Enter your bank transfer reference' });
+  const { studentId, feeId, amount, receiptData, receiptName, receiptType, caption, reference: customReference } = req.body;
+  if (!receiptData) {
+    return res.status(400).json({ message: 'Please upload your bank transfer receipt (image or PDF)' });
+  }
+
+  let mimeType = receiptType || 'application/octet-stream';
+  let buffer;
+  try {
+    if (typeof receiptData === 'string' && receiptData.startsWith('data:')) {
+      const match = receiptData.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        buffer = Buffer.from(match[2], 'base64');
+      } else {
+        buffer = Buffer.from(receiptData, 'base64');
+      }
+    } else if (typeof receiptData === 'string') {
+      buffer = Buffer.from(receiptData, 'base64');
+    } else {
+      return res.status(400).json({ message: 'Invalid receipt file format' });
+    }
+  } catch (err) {
+    return res.status(400).json({ message: 'Failed to process receipt file' });
+  }
+
+  if (!buffer || buffer.length === 0) {
+    return res.status(400).json({ message: 'The uploaded receipt file is empty' });
+  }
+
+  const MAX_FILE_SIZE = 15 * 1024 * 1024;
+  if (buffer.length > MAX_FILE_SIZE) {
+    return res.status(400).json({ message: 'Receipt file exceeds the 15MB size limit' });
+  }
+
+  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'application/pdf'];
+  const ext = path.extname(receiptName || '').toLowerCase();
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.pdf'];
+
+  const isAllowedMime = allowedMimes.includes(mimeType.toLowerCase());
+  const isAllowedExt = allowedExts.includes(ext);
+  if (!isAllowedMime && !isAllowedExt) {
+    return res.status(400).json({ message: 'Only image files (JPG, PNG, WEBP) and PDF receipts are supported' });
+  }
+
   let connection;
+  let savedFilePath = null;
   try {
     const child = await getParentChild(req.user.id, studentId);
     if (!child) return res.status(403).json({ message: 'That is not one of your children' });
-    const [existing] = await pool.execute('SELECT id FROM payments WHERE reference = ?', [String(reference).trim()]);
-    if (existing.length) return res.status(409).json({ message: 'That transfer reference has already been submitted' });
+
+    const receiptsDir = path.resolve(process.env.RECEIPTS_DIR || path.join(__dirname, '..', 'uploads', 'receipts'));
+    fs.mkdirSync(receiptsDir, { recursive: true });
+
+    const safeOriginal = (receiptName || 'receipt').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileExt = ext || (mimeType === 'application/pdf' ? '.pdf' : '.jpg');
+    const fileName = `receipt-${child.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${fileExt}`;
+    savedFilePath = path.join(receiptsDir, fileName);
+    fs.writeFileSync(savedFilePath, buffer);
+
+    const generatedRef = `BT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const reference = String(customReference || '').trim() || generatedRef;
+
     connection = await pool.getConnection();
     await connection.beginTransaction();
-    const result = await createPayment(connection, Number(child.id), feeId, amount, 'Bank transfer', { status: 'pending', reference: String(reference).trim() });
+    const result = await createPayment(connection, Number(child.id), feeId, amount, 'Bank transfer', {
+      status: 'pending',
+      reference,
+      receiptFile: fileName,
+      receiptMime: mimeType,
+      receiptOriginalName: safeOriginal,
+      caption: String(caption || '').trim(),
+    });
     if (result.error) {
       await connection.rollback();
+      if (savedFilePath && fs.existsSync(savedFilePath)) {
+        try { fs.unlinkSync(savedFilePath); } catch {}
+      }
       return res.status(400).json({ message: result.error });
     }
-    await notifyPayment(connection, result.payment, null, 'Bank transfer awaiting confirmation');
+
+    const noteText = caption ? ` (Caption: "${String(caption).trim()}")` : '';
+    await notifyRole(
+      connection,
+      'admin',
+      'Bank transfer receipt submitted',
+      `${child.name}: NGN ${Number(amount).toLocaleString()} for ${result.payment.feeTitle}.${noteText}`
+    );
     await connection.commit();
     res.status(201).json({ ...result.payment, status: 'pending' });
   } catch (err) {
     if (connection) await connection.rollback();
-    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'That transfer reference has already been submitted' });
+    if (savedFilePath && fs.existsSync(savedFilePath)) {
+      try { fs.unlinkSync(savedFilePath); } catch {}
+    }
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A payment with that reference already exists' });
     next(err);
   } finally {
     connection?.release();
+  }
+});
+
+router.get('/:id/uploaded-receipt', async (req, res, next) => {
+  try {
+    const payment = await paymentView(Number(req.params.id));
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    if (!payment.receiptFile) return res.status(404).json({ message: 'No uploaded receipt attached to this payment' });
+
+    if (req.user.role === 'student' && payment.studentId !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'You can only view your own receipts' });
+    }
+    if (req.user.role === 'parent') {
+      const child = await getParentChild(req.user.id, payment.studentId);
+      if (!child) return res.status(403).json({ message: 'You can only view receipts for your own children' });
+    }
+    if (req.user.role === 'teacher') {
+      return res.status(403).json({ message: 'You do not have access to view this receipt' });
+    }
+
+    const receiptsDir = path.resolve(process.env.RECEIPTS_DIR || path.join(__dirname, '..', 'uploads', 'receipts'));
+    const safePath = path.join(receiptsDir, path.basename(payment.receiptFile));
+    if (!fs.existsSync(safePath)) {
+      return res.status(404).json({ message: 'Receipt file not found on server' });
+    }
+
+    const mime = payment.receiptMime || 'application/octet-stream';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `inline; filename="${payment.receiptOriginalName || path.basename(safePath)}"`);
+    fs.createReadStream(safePath).pipe(res);
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -305,10 +475,54 @@ router.post('/confirm/:id', requireRole('admin'), async (req, res, next) => {
     const receiptNo = `RCT-${String(payment.id).padStart(5, '0')}`;
     await connection.execute('UPDATE payments SET status = ?, receipt_no = ? WHERE id = ?', ['success', receiptNo, payment.id]);
     const receipt = await paymentView(Number(payment.id), connection);
-    const [childRows] = await connection.execute('SELECT id FROM users WHERE id = ?', [payment.student_id]);
+    const [childRows] = await connection.execute('SELECT id, parent_id FROM users WHERE id = ?', [payment.student_id]);
     await notifyPayment(connection, receipt, childRows[0] || null);
+    if (childRows[0]?.parent_id) {
+      await notifyUser(
+        connection,
+        childRows[0].parent_id,
+        'Bank transfer payment confirmed',
+        `Your bank transfer payment of NGN ${Number(payment.amount).toLocaleString()} for ${receipt.feeTitle} has been accepted and confirmed by the administration. Status is now Paid.`
+      );
+    }
     await connection.commit();
     res.json(receipt);
+  } catch (err) {
+    if (connection) await connection.rollback();
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
+router.post('/reject/:id', requireRole('admin'), async (req, res, next) => {
+  const { reason } = req.body;
+  let connection;
+  try {
+    await ensurePaymentColumns(pool);
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [rows] = await connection.execute('SELECT * FROM payments WHERE id = ? AND status = ? FOR UPDATE', [Number(req.params.id), 'pending']);
+    const payment = rows[0];
+    if (!payment) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Pending payment not found' });
+    }
+    const cleanReason = String(reason || '').trim();
+    await connection.execute('UPDATE payments SET status = ?, rejection_reason = ? WHERE id = ?', ['rejected', cleanReason || null, payment.id]);
+    const updated = await paymentView(Number(payment.id), connection);
+    const [childRows] = await connection.execute('SELECT id, parent_id FROM users WHERE id = ?', [payment.student_id]);
+    if (childRows[0]?.parent_id) {
+      const reasonSuffix = cleanReason ? ` Reason: "${cleanReason}"` : '';
+      await notifyUser(
+        connection,
+        childRows[0].parent_id,
+        'Bank transfer receipt rejected',
+        `Your bank transfer submission of NGN ${Number(payment.amount).toLocaleString()} for ${updated.feeTitle} was rejected by the administration.${reasonSuffix}`
+      );
+    }
+    await connection.commit();
+    res.json(updated);
   } catch (err) {
     if (connection) await connection.rollback();
     next(err);
@@ -375,10 +589,14 @@ router.get('/', requireRole('admin'), async (req, res, next) => {
       clauses.push('u.class_id = ?');
       values.push(Number(req.query.classId));
     }
+    if (req.query.status) {
+      clauses.push('p.status = ?');
+      values.push(req.query.status);
+    }
     if (req.query.search) {
-      clauses.push('(LOWER(u.name) LIKE ? OR LOWER(u.school_id) LIKE ? OR LOWER(p.receipt_no) LIKE ?)');
+      clauses.push('(LOWER(u.name) LIKE ? OR LOWER(u.school_id) LIKE ? OR LOWER(p.receipt_no) LIKE ? OR LOWER(p.reference) LIKE ? OR LOWER(p.caption) LIKE ?)');
       const search = `%${String(req.query.search).toLowerCase()}%`;
-      values.push(search, search, search);
+      values.push(search, search, search, search, search);
     }
     if (clauses.length) query += ` WHERE ${clauses.join(' AND ')}`;
     query += ' ORDER BY p.date DESC';

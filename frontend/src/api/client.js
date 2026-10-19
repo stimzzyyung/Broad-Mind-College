@@ -64,6 +64,11 @@ export const api = {
   put: (path, body) => request(path, { method: 'PUT', body }),
   del: (path) => request(path, { method: 'DELETE' }),
 
+  getBlob: (path) => request(path, { asBlob: true }),
+  async getBlobUrl(path) {
+    const blob = await request(path, { asBlob: true });
+    return URL.createObjectURL(blob);
+  },
   // Downloads a file (like a PDF receipt) and saves it on the person's device
   async download(path, filename) {
     const blob = await request(path, { asBlob: true });

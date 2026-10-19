@@ -122,7 +122,11 @@ CREATE TABLE IF NOT EXISTS payments (
   receipt_no  VARCHAR(50) UNIQUE,
   term        VARCHAR(20),
   session     VARCHAR(20),
-  date        DATETIME DEFAULT CURRENT_TIMESTAMP,
+  date                  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  receipt_file          VARCHAR(255) NULL,
+  receipt_mime          VARCHAR(100) NULL,
+  receipt_original_name VARCHAR(255) NULL,
+  caption               TEXT NULL,
   CONSTRAINT fk_pay_student FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_pay_fee     FOREIGN KEY (fee_id)     REFERENCES fees(id)  ON DELETE CASCADE,
   INDEX idx_payments_student (student_id)

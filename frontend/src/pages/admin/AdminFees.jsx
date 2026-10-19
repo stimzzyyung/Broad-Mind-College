@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Plus, Search, Trash2, Pencil, Wallet, Banknote, TrendingUp, AlertCircle, Check } from 'lucide-react';
+import { Download, Plus, Search, Trash2, Pencil, Wallet, Banknote, TrendingUp, AlertCircle, Check, Eye, X, FileText, AlertTriangle } from 'lucide-react';
 import { api } from '../../api/client.js';
 import useFetch from '../../hooks/useFetch.js';
 import PageHeader from '../../components/ui/PageHeader.jsx';
@@ -18,11 +18,22 @@ export default function AdminFees() {
   const payments = useFetch('/payments');
   const fees = useFetch('/payments/fees');
   const [tab, setTab] = useState('payments');
+  const [paymentFilter, setPaymentFilter] = useState('all'); // all | pending | success | rejected
   const [search, setSearch] = useState('');
-  const [recording, setRecording] = useState(null); // the student we are recording a payment for
+  const [recording, setRecording] = useState(null); // student we are recording a payment for
   const [entry, setEntry] = useState({ feeId: '', amount: '', method: 'Bank transfer' });
   const [newFee, setNewFee] = useState({ title: '', amount: '' });
   const [editingFee, setEditingFee] = useState(null); // { id, title, amount }
+
+  // Receipt inspection modal
+  const [inspectingPayment, setInspectingPayment] = useState(null);
+  const [inspectUrl, setInspectUrl] = useState(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+
+  // Rejection modal
+  const [rejectingPayment, setRejectingPayment] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectBusy, setRejectBusy] = useState(false);
 
   if (summary.loading || payments.loading || fees.loading) return <Loading />;
   const err = summary.error || payments.error || fees.error;
@@ -32,6 +43,8 @@ export default function AdminFees() {
   const rate = totals.expected ? Math.round((totals.collected / totals.expected) * 100) : 0;
   const q = search.toLowerCase();
 
+  const pendingPaymentsCount = payments.data.filter((p) => p.status === 'pending').length;
+
   function reloadAll() {
     summary.reload();
     payments.reload();
@@ -40,19 +53,64 @@ export default function AdminFees() {
 
   async function downloadReceipt(p) {
     try {
-      await api.download(`/payments/${p.id}/receipt`, `${p.receiptNo}.pdf`);
+      await api.download(`/payments/${p.id}/receipt`, `${p.receiptNo || 'receipt'}.pdf`);
     } catch (e) {
       toast.error(e.message);
     }
   }
 
+  async function openReceiptInspection(payment) {
+    setInspectingPayment(payment);
+    setInspectLoading(true);
+    try {
+      const url = await api.getBlobUrl(`/payments/${payment.id}/uploaded-receipt`);
+      setInspectUrl(url);
+    } catch (e) {
+      toast.error('Could not load uploaded receipt: ' + e.message);
+      setInspectingPayment(null);
+    } finally {
+      setInspectLoading(false);
+    }
+  }
+
+  function closeReceiptInspection() {
+    if (inspectUrl) {
+      URL.revokeObjectURL(inspectUrl);
+    }
+    setInspectingPayment(null);
+    setInspectUrl(null);
+  }
+
   async function confirmTransfer(payment) {
     try {
       await api.post(`/payments/confirm/${payment.id}`);
-      toast.success('Bank transfer confirmed');
+      toast.success(`Payment of ${money(payment.amount)} for ${payment.studentName} confirmed and marked as Paid`);
+      closeReceiptInspection();
       reloadAll();
     } catch (e) {
       toast.error(e.message);
+    }
+  }
+
+  function openRejectModal(payment) {
+    setRejectingPayment(payment);
+    setRejectReason('');
+  }
+
+  async function submitRejection(e) {
+    e.preventDefault();
+    if (!rejectingPayment) return;
+    setRejectBusy(true);
+    try {
+      await api.post(`/payments/reject/${rejectingPayment.id}`, { reason: rejectReason.trim() });
+      toast.success('Payment receipt rejected and parent has been notified');
+      setRejectingPayment(null);
+      closeReceiptInspection();
+      reloadAll();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setRejectBusy(false);
     }
   }
 
@@ -114,16 +172,29 @@ export default function AdminFees() {
     }
   }
 
-  const filteredPayments = payments.data.filter(
-    (p) => !q || p.studentName.toLowerCase().includes(q) || p.schoolId.toLowerCase().includes(q) || p.receiptNo.toLowerCase().includes(q)
-  );
+  const filteredPayments = payments.data.filter((p) => {
+    if (paymentFilter !== 'all' && p.status !== paymentFilter) return false;
+    if (!q) return true;
+    return (
+      p.studentName?.toLowerCase().includes(q) ||
+      p.schoolId?.toLowerCase().includes(q) ||
+      p.receiptNo?.toLowerCase().includes(q) ||
+      p.reference?.toLowerCase().includes(q) ||
+      p.caption?.toLowerCase().includes(q) ||
+      p.feeTitle?.toLowerCase().includes(q)
+    );
+  });
+
   const filteredStudents = summary.data.students.filter(
     (s) => !q || s.name.toLowerCase().includes(q) || s.schoolId.toLowerCase().includes(q)
   );
 
   return (
     <>
-      <PageHeader title="Fees and receipts" subtitle={`${settings.term}, ${settings.session}. Track what has been paid and download receipts.`} />
+      <PageHeader
+        title="Fees and receipts"
+        subtitle={`${settings.term}, ${settings.session}. Review bank transfer receipts, confirm payments, and track balances.`}
+      />
 
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <StatCard icon={Wallet} label="Expected" value={money(totals.expected)} />
@@ -135,40 +206,166 @@ export default function AdminFees() {
       </div>
 
       <div className="tabs" role="tablist">
-        {[['payments', 'Payments and receipts'], ['balances', 'Student balances'], ['items', 'Fee items']].map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={tab === key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>{label}</button>
+        {[
+          ['payments', `Payments & Receipts ${pendingPaymentsCount > 0 ? `(${pendingPaymentsCount} pending)` : ''}`],
+          ['balances', 'Student balances'],
+          ['items', 'Fee items'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            className={`tab ${tab === key ? 'active' : ''}`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
         ))}
       </div>
 
       {tab !== 'items' && (
-        <div className="filters">
-          <div className="search">
+        <div className="filters" style={{ flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="search" style={{ minWidth: 260 }}>
             <Search size={17} />
-            <input className="input" placeholder="Search by student, ID or receipt" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search" />
+            <input
+              className="input"
+              placeholder="Search by student, ID, receipt, or caption"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search"
+            />
           </div>
+
+          {tab === 'payments' && (
+            <div className="payment-tabs" style={{ marginBottom: 0 }}>
+              <button
+                type="button"
+                className={`payment-pill ${paymentFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setPaymentFilter('all')}
+              >
+                All Payments
+              </button>
+              <button
+                type="button"
+                className={`payment-pill ${paymentFilter === 'pending' ? 'active' : ''}`}
+                onClick={() => setPaymentFilter('pending')}
+              >
+                Pending Confirmation
+                {pendingPaymentsCount > 0 && <span className="payment-count-badge">{pendingPaymentsCount}</span>}
+              </button>
+              <button
+                type="button"
+                className={`payment-pill ${paymentFilter === 'success' ? 'active' : ''}`}
+                onClick={() => setPaymentFilter('success')}
+              >
+                Confirmed / Paid
+              </button>
+              <button
+                type="button"
+                className={`payment-pill ${paymentFilter === 'rejected' ? 'active' : ''}`}
+                onClick={() => setPaymentFilter('rejected')}
+              >
+                Rejected
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {tab === 'payments' && (
         filteredPayments.length === 0 ? (
-          <div className="card"><EmptyState icon={Wallet} title="No payments found" /></div>
+          <div className="card"><EmptyState icon={Wallet} title="No payments found matching criteria" /></div>
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Reference</th><th>Student</th><th>Paid for</th><th className="num">Amount</th><th>Method</th><th>Status</th><th>Date</th><th /></tr></thead>
+              <thead>
+                <tr>
+                  <th>Reference</th>
+                  <th>Student</th>
+                  <th>Paid for</th>
+                  <th className="num">Amount</th>
+                  <th>Method</th>
+                  <th>Receipt & Caption</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th />
+                </tr>
+              </thead>
               <tbody>
                 {filteredPayments.map((p) => (
                   <tr key={p.id}>
-                    <td className="nowrap">{p.reference}</td>
-                    <td><div className="strong">{p.studentName}</div><div className="sub small muted">{p.className}</div></td>
+                    <td className="nowrap">
+                      <div className="strong" style={{ fontSize: 13 }}>{p.receiptNo || p.reference}</div>
+                      {p.receiptNo && p.reference && <div className="sub small muted" style={{ fontSize: 11 }}>Ref: {p.reference}</div>}
+                    </td>
+                    <td>
+                      <div className="strong">{p.studentName}</div>
+                      <div className="sub small muted">{p.className} · {p.schoolId}</div>
+                    </td>
                     <td>{p.feeTitle}</td>
                     <td className="num">{money(p.amount)}</td>
                     <td>{p.method}</td>
-                    <td><Badge tone={p.status === 'success' ? 'ok' : 'warn'}>{p.status === 'success' ? 'Confirmed' : 'Pending'}</Badge></td>
+                    <td>
+                      <div className="stack" style={{ gap: 4 }}>
+                        {p.receiptFile ? (
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            style={{ padding: '3px 8px', fontSize: 12, width: 'fit-content' }}
+                            onClick={() => openReceiptInspection(p)}
+                          >
+                            <Eye size={12} /> View receipt
+                          </button>
+                        ) : (
+                          <span className="small muted">No upload</span>
+                        )}
+                        {p.caption && (
+                          <div className="caption-bubble" title={p.caption}>
+                            <span>💬 "{p.caption}"</span>
+                          </div>
+                        )}
+                        {p.rejectionReason && (
+                          <div className="sub small" style={{ color: 'var(--danger)', fontSize: 11 }}>
+                            Declined: {p.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      {p.status === 'success' && <Badge tone="ok">Confirmed</Badge>}
+                      {p.status === 'pending' && <Badge tone="warn">Pending Approval</Badge>}
+                      {p.status === 'rejected' && <Badge tone="danger">Rejected</Badge>}
+                    </td>
                     <td className="nowrap">{formatDate(p.date)}</td>
-                    <td><div className="actions">
-                      {p.status === 'pending' ? <button className="btn btn-primary btn-sm" onClick={() => confirmTransfer(p)}><Check size={15} />Confirm</button> : <button className="btn btn-outline btn-sm" onClick={() => downloadReceipt(p)}><Download size={15} />Receipt</button>}
-                    </div></td>
+                    <td>
+                      <div className="actions">
+                        {p.status === 'pending' ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => confirmTransfer(p)}
+                              title="Accept and confirm payment"
+                            >
+                              <Check size={14} /> Accept & Confirm
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ color: 'var(--danger)' }}
+                              onClick={() => openRejectModal(p)}
+                              title="Reject receipt"
+                            >
+                              <X size={14} /> Reject
+                            </button>
+                          </>
+                        ) : p.status === 'success' ? (
+                          <button className="btn btn-outline btn-sm" onClick={() => downloadReceipt(p)}>
+                            <Download size={14} /> Receipt
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -236,6 +433,115 @@ export default function AdminFees() {
             </div>
           </form>
         </div>
+      )}
+
+      {/* Inspect Uploaded Receipt Modal */}
+      {inspectingPayment && (
+        <Modal title={`Bank Transfer Receipt · ${inspectingPayment.studentName}`} onClose={closeReceiptInspection} wide={true}>
+          <div className="stack" style={{ gap: 16 }}>
+            <div style={{ background: 'var(--paper)', padding: 14, borderRadius: 10, border: '1px solid var(--line)' }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <h4 style={{ fontSize: 16, color: 'var(--ink)' }}>{inspectingPayment.studentName} ({inspectingPayment.className})</h4>
+                  <div className="small muted">School ID: {inspectingPayment.schoolId} · Submitted: {formatDate(inspectingPayment.date)}</div>
+                  <div style={{ marginTop: 4 }}>
+                    <strong>Fee:</strong> {inspectingPayment.feeTitle} · <strong>Amount:</strong> <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{money(inspectingPayment.amount)}</span>
+                  </div>
+                </div>
+                <Badge tone={inspectingPayment.status === 'success' ? 'ok' : inspectingPayment.status === 'pending' ? 'warn' : 'danger'}>
+                  {inspectingPayment.status === 'success' ? 'Confirmed (Paid)' : inspectingPayment.status === 'pending' ? 'Pending Admin Approval' : 'Rejected'}
+                </Badge>
+              </div>
+
+              {inspectingPayment.caption && (
+                <div style={{ marginTop: 10, padding: 10, background: '#fff', borderRadius: 8, border: '1px solid var(--line)' }}>
+                  <div className="small muted" style={{ fontWeight: 600, marginBottom: 2 }}>Caption from Parent:</div>
+                  <div style={{ color: 'var(--ink)', fontSize: 14 }}>"{inspectingPayment.caption}"</div>
+                </div>
+              )}
+            </div>
+
+            {inspectLoading ? (
+              <Loading />
+            ) : inspectUrl ? (
+              <div style={{ textAlign: 'center', background: '#fafafa', padding: 16, borderRadius: 10, border: '1px solid var(--line)' }}>
+                {inspectingPayment.receiptMime === 'application/pdf' || inspectingPayment.receiptOriginalName?.endsWith('.pdf') ? (
+                  <div className="stack" style={{ alignItems: 'center', padding: 24, gap: 12 }}>
+                    <FileText size={48} color="var(--danger)" />
+                    <div className="strong">{inspectingPayment.receiptOriginalName || 'Bank Transfer Receipt PDF'}</div>
+                    <a href={inspectUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
+                      <Download size={14} /> Open or Download PDF
+                    </a>
+                  </div>
+                ) : (
+                  <div>
+                    <img src={inspectUrl} alt="Bank Transfer Receipt" className="receipt-viewer-img" />
+                    <div style={{ marginTop: 10 }}>
+                      <a href={inspectUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+                        Open in new window
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="form-actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <button type="button" className="btn btn-ghost" onClick={closeReceiptInspection}>Close</button>
+              {inspectingPayment.status === 'pending' && (
+                <div className="row" style={{ gap: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ color: 'var(--danger)' }}
+                    onClick={() => {
+                      const p = inspectingPayment;
+                      closeReceiptInspection();
+                      openRejectModal(p);
+                    }}
+                  >
+                    <X size={15} /> Reject
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => confirmTransfer(inspectingPayment)}
+                  >
+                    <Check size={16} /> Accept & Confirm Payment
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reject Payment Modal */}
+      {rejectingPayment && (
+        <Modal title="Reject Bank Transfer Receipt" onClose={() => setRejectingPayment(null)}>
+          <form onSubmit={submitRejection} className="stack" style={{ gap: 14 }}>
+            <p className="muted small">
+              You are rejecting the payment of <strong>{money(rejectingPayment.amount)}</strong> for <strong>{rejectingPayment.studentName}</strong>. The parent will be notified and the fee will remain unpaid.
+            </p>
+            <div className="field">
+              <label htmlFor="reject-reason">Reason for rejection (Optional)</label>
+              <textarea
+                id="reject-reason"
+                className="textarea"
+                rows={3}
+                placeholder="e.g. Receipt image is unclear / Funds not received on bank statement / Amount does not match"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+              />
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setRejectingPayment(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ background: 'var(--danger)' }} disabled={rejectBusy}>
+                {rejectBusy ? 'Rejecting…' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {editingFee && (

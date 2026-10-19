@@ -2,7 +2,7 @@ import {
   LayoutDashboard, UserPlus, GraduationCap, Users, School, Award,
   MonitorPlay, Wallet, User, ClipboardList, Baby,
   Clock, Calendar, HelpCircle, Archive, Sliders, BarChart3,
-  Trophy, ShieldAlert, Layers, Radio
+  Trophy, ShieldAlert, Layers, Radio, ShieldCheck
 } from 'lucide-react';
 
 // The side navigation for each portal. To add a page:
@@ -32,6 +32,7 @@ export const navigation = {
         { label: 'Register students', to: '/admin/register-student', icon: UserPlus },
         { label: 'Students', to: '/admin/students', icon: GraduationCap },
         { label: 'Teachers', to: '/admin/teachers', icon: Users },
+        { label: 'Administrators', to: '/admin/admins', icon: ShieldCheck },
       ],
     },
     {

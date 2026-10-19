@@ -14,6 +14,7 @@ import AdminHome from '../pages/admin/AdminHome.jsx';
 import RegisterStudent from '../pages/admin/RegisterStudent.jsx';
 import Students from '../pages/admin/Students.jsx';
 import Teachers from '../pages/admin/Teachers.jsx';
+import Admins from '../pages/admin/Admins.jsx';
 import AdminClasses from '../pages/admin/AdminClasses.jsx';
 import AdminResults from '../pages/admin/AdminResults.jsx';
 import AdminLMS from '../pages/admin/AdminLMS.jsx';
@@ -234,6 +235,7 @@ export default function AppRoutes() {
         <Route path="register-student" element={<RegisterStudent />} />
         <Route path="students" element={<Students />} />
         <Route path="teachers" element={<Teachers />} />
+        <Route path="admins" element={<Admins />} />
         <Route path="classes" element={<AdminClasses />} />
         <Route path="results" element={<AdminResults />} />
         <Route path="lms" element={<AdminLMS />} />
