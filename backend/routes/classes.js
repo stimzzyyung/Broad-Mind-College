@@ -81,14 +81,22 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/subjects', async (req, res, next) => {
+router.get('/subjects', async (req, res) => {
   try {
     const [rows] = await pool.execute('SELECT name FROM subjects WHERE is_active = 1 ORDER BY name');
-    res.json(rows.map((row) => row.name));
+    if (rows.length > 0) {
+      return res.json(rows.map((row) => row.name));
+    }
   } catch (err) {
-    next(err);
+    console.warn('Could not query subjects from table, falling back to defaults:', err.message);
   }
+  res.json([
+    'Mathematics', 'English Language', 'Basic Science', 'Civic Education',
+    'Computer Studies', 'Social Studies', 'Physics', 'Chemistry', 'Biology',
+    'Agricultural Science', 'Economics', 'Government', 'Literature in English'
+  ]);
 });
+
 
 router.get('/:id', async (req, res, next) => {
   try {

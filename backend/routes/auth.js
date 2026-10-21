@@ -10,13 +10,19 @@ const router = express.Router();
 
 router.get('/settings', async (req, res, next) => {
   try {
-    const settings = await getSettings(pool);
-    if (!settings) return res.status(503).json({ message: 'School settings have not been configured' });
-    res.json({ ...settings, emailDomain: await getPortalConfig(pool, 'email_domain') });
+    const settings = (await getSettings(pool)) || {
+      schoolName: 'Broad-Mind College',
+      motto: 'Knowledge with character',
+      session: '2026/2027',
+      term: 'First Term',
+    };
+    const emailDomain = (await getPortalConfig(pool, 'email_domain')) || 'broadmindcollege.edu';
+    res.json({ ...settings, emailDomain });
   } catch (err) {
     next(err);
   }
 });
+
 
 // POST /api/auth/login   { identifier, password, role }
 // "identifier" can be the school ID (e.g. CVC/26/001) or an email address

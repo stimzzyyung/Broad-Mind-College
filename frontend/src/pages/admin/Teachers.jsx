@@ -39,8 +39,13 @@ export default function Teachers() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
 
-  if (loading || subjectOptions.loading) return <Loading />;
-  if (error || subjectOptions.error) return <ErrorNote message={error || subjectOptions.error} onRetry={() => { reload(); subjectOptions.reload(); }} />;
+  if (loading) return <Loading />;
+  if (error) return <ErrorNote message={error} onRetry={reload} />;
+
+  const availableSubjects = subjectOptions.data || [
+    'Mathematics', 'English Language', 'Basic Science', 'Civic Education',
+    'Computer Studies', 'Social Studies', 'Physics', 'Chemistry', 'Biology'
+  ];
 
   function toggleSubject(subject) {
     const has = form.subjects.includes(subject);
@@ -166,8 +171,9 @@ export default function Teachers() {
               <div className="field full">
                 <span className="label">Subjects they can teach</span>
                 <div className="checks">
-                  {(subjectOptions.data || []).map((s) => (
+                  {availableSubjects.map((s) => (
                     <label key={s} className="check">
+
                       <input type="checkbox" checked={form.subjects.includes(s)} onChange={() => toggleSubject(s)} />
                       {s}
                     </label>

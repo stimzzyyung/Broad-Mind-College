@@ -28,9 +28,11 @@ export default function Login() {
   const portal = PORTALS.find((p) => p.key === role);
   const identifierPlaceholder = role === 'student'
     ? 'Enter your school ID'
-    : schoolSettings?.emailDomain
-      ? `${role === 'admin' ? 'principal' : 'you'}@${schoolSettings.emailDomain}`
-      : 'Enter your school email';
+    : role === 'admin'
+      ? 'broaddmindprivateschool@gmail.com'
+      : schoolSettings?.emailDomain
+        ? `you@${schoolSettings.emailDomain}`
+        : 'Enter your school email';
 
   function pickRole(key) {
     setRole(key);
@@ -57,9 +59,9 @@ export default function Login() {
     <div className="login">
       <section className="login-board" aria-hidden="true">
         <div>
-          <div className="crest">{schoolSettings?.schoolName?.[0] || ''}</div>
-          <h1>{schoolSettings?.schoolName || ''}</h1>
-          <div className="motto">{schoolSettings?.motto || ''}</div>
+          <div className="crest">{schoolSettings?.schoolName?.[0] || 'B'}</div>
+          <h1>{schoolSettings?.schoolName || 'Broad-Mind College'}</h1>
+          <div className="motto">{schoolSettings?.motto || 'Knowledge with character'}</div>
         </div>
       </section>
 

@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS payments (
   receipt_mime          VARCHAR(100) NULL,
   receipt_original_name VARCHAR(255) NULL,
   caption               TEXT NULL,
+  rejection_reason      VARCHAR(255) NULL,
+  decline_reason        VARCHAR(255) NULL,
+
   CONSTRAINT fk_pay_student FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_pay_fee     FOREIGN KEY (fee_id)     REFERENCES fees(id)  ON DELETE CASCADE,
   INDEX idx_payments_student (student_id)
@@ -581,6 +584,8 @@ INSERT IGNORE INTO cbt_difficulties (name, sort_order) VALUES
   ('Easy', 1), ('Medium', 2), ('Hard', 3);
 
 INSERT IGNORE INTO portal_config (config_key, config_value) VALUES
-  ('email_domain', 'broadmindcollege.edu');
+  ('email_domain', 'broadmindcollege.edu'),
+  ('school_code', 'BMS');
+
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -9,7 +9,7 @@ const router = express.Router();
 router.use(requireAuth, requireRole('admin'));
 
 async function makeAdminSchoolId(connection, schoolCode) {
-  const prefix = `${schoolCode || 'BMC'}/ADM/`;
+  const prefix = `${schoolCode || 'BMS'}/ADM/`;
   const [rows] = await connection.execute('SELECT school_id FROM users WHERE school_id LIKE ?', [`${prefix}%`]);
   const highest = rows.reduce((max, row) => {
     const rawNum = row.school_id ? Number(row.school_id.slice(prefix.length)) : 0;
@@ -53,7 +53,7 @@ router.post('/', async (req, res, next) => {
       return res.status(409).json({ message: 'That email is already registered to an account' });
     }
 
-    const schoolCode = (await getPortalConfig(connection, 'school_code')) || 'BMC';
+    const schoolCode = (await getPortalConfig(connection, 'school_code')) || 'BMS';
     const schoolId = await makeAdminSchoolId(connection, schoolCode);
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -62,11 +62,12 @@ router.post('/', async (req, res, next) => {
       ['admin', schoolId, name.trim(), cleanEmail, passwordHash, phone ? phone.trim() : '', qualification ? qualification.trim() : 'Administrator', '', '', 'active']
     );
 
+    const [rows] = await connection.execute('SELECT * FROM users WHERE id = ?', [result.insertId]);
     await connection.commit();
 
-    const [rows] = await pool.execute('SELECT * FROM users WHERE id = ?', [result.insertId]);
     const newAdmin = safeUser(userFromRow(rows[0]));
     res.status(201).json(newAdmin);
+
   } catch (err) {
     if (connection) await connection.rollback();
     if (err.code === 'ER_DUP_ENTRY') {
@@ -143,10 +144,10 @@ router.put('/:id', async (req, res, next) => {
       await connection.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
     }
 
+    const [updatedRows] = await connection.execute('SELECT * FROM users WHERE id = ?', [adminId]);
     await connection.commit();
-
-    const [updatedRows] = await pool.execute('SELECT * FROM users WHERE id = ?', [adminId]);
     res.json(safeUser(userFromRow(updatedRows[0])));
+
   } catch (err) {
     if (connection) await connection.rollback();
     next(err);

@@ -41,8 +41,12 @@ async function getSettings(pool) {
 }
 
 async function getPortalConfig(executor, key) {
-  const [rows] = await executor.execute('SELECT config_value FROM portal_config WHERE config_key = ? LIMIT 1', [key]);
-  return rows[0]?.config_value || null;
+  try {
+    const [rows] = await executor.execute('SELECT config_value FROM portal_config WHERE config_key = ? LIMIT 1', [key]);
+    return rows[0]?.config_value || null;
+  } catch {
+    return null;
+  }
 }
 
 module.exports = { userFromRow, settingsFromRow, getSettings, getPortalConfig };

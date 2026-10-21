@@ -16,7 +16,7 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'broad-mind-private-school',
   waitForConnections: true,
-  connectionLimit: Number(process.env.DB_POOL_SIZE) || 10,
+  connectionLimit: Number(process.env.DB_POOL_SIZE) || 3,
   queueLimit: 0,
   charset: 'utf8mb4',
   decimalNumbers: true,

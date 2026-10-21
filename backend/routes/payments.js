@@ -31,35 +31,43 @@ async function feeStatus(studentId, executor = pool) {
 }
 
 let paymentColumnsChecked = false;
+let paymentColumnsPromise = null;
 async function ensurePaymentColumns(executor = pool) {
   if (paymentColumnsChecked) return;
-  try {
-    const [cols] = await executor.execute(
-      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'"
-    );
-    const existing = new Set(cols.map((c) => String(c.COLUMN_NAME || c.column_name || Object.values(c)[0])));
-    if (existing.size > 0) {
-      if (!existing.has('receipt_file')) {
-        await executor.execute('ALTER TABLE payments ADD COLUMN receipt_file VARCHAR(255) NULL');
+  if (paymentColumnsPromise) return paymentColumnsPromise;
+  paymentColumnsPromise = (async () => {
+    try {
+      const [cols] = await executor.execute(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'"
+      );
+      const existing = new Set(cols.map((c) => String(c.COLUMN_NAME || c.column_name || Object.values(c)[0])));
+      if (existing.size > 0) {
+        if (!existing.has('receipt_file')) {
+          await executor.execute('ALTER TABLE payments ADD COLUMN receipt_file VARCHAR(255) NULL');
+        }
+        if (!existing.has('receipt_mime')) {
+          await executor.execute('ALTER TABLE payments ADD COLUMN receipt_mime VARCHAR(100) NULL');
+        }
+        if (!existing.has('receipt_original_name')) {
+          await executor.execute('ALTER TABLE payments ADD COLUMN receipt_original_name VARCHAR(255) NULL');
+        }
+        if (!existing.has('caption')) {
+          await executor.execute('ALTER TABLE payments ADD COLUMN caption TEXT NULL');
+        }
+        if (!existing.has('rejection_reason')) {
+          await executor.execute('ALTER TABLE payments ADD COLUMN rejection_reason VARCHAR(255) NULL');
+        }
+        paymentColumnsChecked = true;
       }
-      if (!existing.has('receipt_mime')) {
-        await executor.execute('ALTER TABLE payments ADD COLUMN receipt_mime VARCHAR(100) NULL');
-      }
-      if (!existing.has('receipt_original_name')) {
-        await executor.execute('ALTER TABLE payments ADD COLUMN receipt_original_name VARCHAR(255) NULL');
-      }
-      if (!existing.has('caption')) {
-        await executor.execute('ALTER TABLE payments ADD COLUMN caption TEXT NULL');
-      }
-      if (!existing.has('rejection_reason')) {
-        await executor.execute('ALTER TABLE payments ADD COLUMN rejection_reason VARCHAR(255) NULL');
-      }
-      paymentColumnsChecked = true;
+    } catch (err) {
+      console.warn('Could not ensure payment columns:', err.message);
+    } finally {
+      paymentColumnsPromise = null;
     }
-  } catch (err) {
-    console.warn('Could not ensure payment columns:', err.message);
-  }
+  })();
+  return paymentColumnsPromise;
 }
+
 
 async function paymentView(paymentId, executor = pool) {
   await ensurePaymentColumns(executor);
@@ -76,7 +84,7 @@ async function paymentView(paymentId, executor = pool) {
     receiptMime: row.receipt_mime || null,
     receiptOriginalName: row.receipt_original_name || null,
     caption: row.caption || '',
-    rejectionReason: row.rejection_reason || '',
+    rejectionReason: row.rejection_reason || row.decline_reason || '',
     term: row.term, session: row.session, date: row.date,
     studentName: row.student_name || 'Removed student', schoolId: row.school_id || '',
     className: row.class_name || '', feeTitle: row.fee_title || 'Fee',
@@ -509,8 +517,9 @@ router.post('/reject/:id', requireRole('admin'), async (req, res, next) => {
       return res.status(404).json({ message: 'Pending payment not found' });
     }
     const cleanReason = String(reason || '').trim();
-    await connection.execute('UPDATE payments SET status = ?, rejection_reason = ? WHERE id = ?', ['rejected', cleanReason || null, payment.id]);
+    await connection.execute('UPDATE payments SET status = ?, rejection_reason = ?, decline_reason = ? WHERE id = ?', ['rejected', cleanReason || null, cleanReason || null, payment.id]);
     const updated = await paymentView(Number(payment.id), connection);
+
     const [childRows] = await connection.execute('SELECT id, parent_id FROM users WHERE id = ?', [payment.student_id]);
     if (childRows[0]?.parent_id) {
       const reasonSuffix = cleanReason ? ` Reason: "${cleanReason}"` : '';
